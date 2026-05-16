@@ -1,16 +1,13 @@
 $Env:HF_HOME = "huggingface"
-
-if (!(Test-Path -Path "venv")) {
-    Write-Output  "Creating venv for python..."
-    python -m venv venv
-}
-.\venv\Scripts\activate
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Output "Installing deps..."
 
-pip install torch==2.7.0+cu128 torchvision==0.22.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
-pip install -U -I --no-deps xformers==0.0.30 --extra-index-url https://download.pytorch.org/whl/cu128
-pip install --upgrade -r requirements.txt
+if (!(Get-Command uv -ErrorAction SilentlyContinue)) {
+    python -m pip install --upgrade uv
+}
+
+uv sync --project "$ScriptDir"
 
 Write-Output "Install completed"
 Read-Host | Out-Null ;

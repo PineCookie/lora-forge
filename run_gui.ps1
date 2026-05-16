@@ -1,9 +1,17 @@
 $Env:HF_HOME = "huggingface"
 $Env:PYTHONUTF8 = "1"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-if (Test-Path -Path "venv\Scripts\activate") {
+Push-Location $ScriptDir
+
+if (Get-Command uv -ErrorAction SilentlyContinue) {
+    uv run python gui.py @args
+    Pop-Location
+    Exit
+}
+elseif (Test-Path -Path ".venv\Scripts\activate") {
     Write-Host -ForegroundColor green "Activating virtual environment..."
-    .\venv\Scripts\activate
+    .\.venv\Scripts\activate
 }
 elseif (Test-Path -Path "python\python.exe") {
     Write-Host -ForegroundColor green "Using python from python folder..."
@@ -14,4 +22,5 @@ else {
     Write-Host -ForegroundColor Blue "No virtual environment found, using system python..."
 }
 
-python gui.py
+python gui.py @args
+Pop-Location

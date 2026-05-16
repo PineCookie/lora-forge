@@ -1,0 +1,71 @@
+[project]
+name = "lora-scripts"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    # Torch
+    "torch>=2.9.0",
+    "torchvision",
+    "triton<3.7; sys_platform != 'win32'",
+    "triton-windows<3.7; sys_platform == 'win32'",
+    "xformers>=0.0.35",
+    # Training core
+    "accelerate>=1.6.0",
+    "bitsandbytes>=0.49.2",
+    "dadaptation>=3.2",
+    "diffusers[torch]>=0.37.1",
+    "lion-pytorch",
+    "lycoris-lora>=3.4.0",
+    "open-clip-torch>=3.3.0",
+    "prodigy-plus-schedule-free>=2.0.1",
+    "prodigyopt",
+    "pytorch-lightning>=2.6.1",
+    "pytorch-optimizer",
+    "schedulefree",
+    "safetensors>=0.7.0",
+    "transformers>=5.8.1",
+    # Scientific/image utilities
+    "einops",
+    "ftfy",
+    "imagesize>=2.0.0",
+    "numpy>=2.4.5",
+    "opencv-python",
+    "pandas>=3.0.3",
+    "pillow>=12.2.0",
+    "scipy>=1.17.1",
+    "sentencepiece>=0.2.1",
+    # App/runtime utilities
+    "easygui>=0.98.3",
+    "huggingface-hub>=1.15.0",
+    "packaging>=26.2",
+    "psutil>=7.2.2",
+    "requests>=2.34.2",
+    "rich>=13.7.0",
+    "setuptools>=81.0.0",
+    "tqdm>=4.67.3",
+    "toml>=0.10.2",
+    "voluptuous>=0.16.0",
+    # UI/server
+    "altair>=6.1.0",
+    "gradio>=6.14.0",
+    "fastapi>=0.136.1",
+    "httpx>=0.28.1",
+    "tensorboard>=2.20.0",
+    "uvicorn>=0.47.0",
+    "wandb>=0.27.0",
+    "websockets>=16.0",
+    # ONNX
+    "onnxruntime-gpu>=1.26.0",
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch" }]
+torchvision = [{ index = "pytorch" }]
+xformers = [{ index = "pytorch" }]
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true

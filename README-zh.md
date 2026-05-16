@@ -52,7 +52,7 @@ Stable Diffusion 训练工作台。一切集成于一个 WebUI 中。
 
 ### 必要依赖
 
-Python 3.10 和 Git
+Python 3.12 和 Git
 
 ### 克隆带子模块的仓库
 
@@ -66,7 +66,7 @@ git clone --recurse-submodules https://github.com/Akegarasu/lora-scripts
 
 #### 安装
 
-运行 `install-cn.ps1` 将自动为您创建虚拟环境并安装必要的依赖。 
+运行 `install-cn.ps1` 将根据 `pyproject.toml` 安装依赖到 uv 管理的 `.venv`。
 
 #### 训练
 
@@ -77,7 +77,7 @@ git clone --recurse-submodules https://github.com/Akegarasu/lora-scripts
 
 #### 安装
 
-运行 `install.bash` 将创建虚拟环境并安装必要的依赖。
+运行 `install.bash` 将根据 `pyproject.toml` 安装依赖到 uv 管理的 `.venv`。
 
 #### 训练
 
@@ -146,7 +146,7 @@ services:
 
 #### 安装
 
-运行 `install.ps1` 将自动为您创建虚拟环境并安装必要的依赖。
+运行 `install.ps1` 将根据 `pyproject.toml` 安装依赖到 uv 管理的 `.venv`。
 
 #### 训练
 
@@ -156,16 +156,16 @@ services:
 
 #### 安装
 
-运行 `install.bash` 将创建虚拟环境并安装必要的依赖。
+运行 `install.bash` 将根据 `pyproject.toml` 安装依赖到 uv 管理的 `.venv`。
 
 #### 训练
 
 训练
 
-脚本 `train.sh` **不会** 为您激活虚拟环境。您应该先激活虚拟环境。
+脚本 `train.sh` **不会** 为您激活环境。您应该先激活环境。
 
 ```sh
-source venv/bin/activate
+source .venv/bin/activate
 ```
 
 编辑 `train.sh`，然后运行它。

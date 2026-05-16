@@ -52,7 +52,7 @@ Follow the installation guide below to install the GUI, then run `run_gui.ps1`(w
 
 ### Required Dependencies
 
-Python 3.10 and Git
+Python 3.12 and Git
 
 ### Clone repo with submodules
 
@@ -66,7 +66,7 @@ git clone --recurse-submodules https://github.com/Akegarasu/lora-scripts
 
 #### Installation
 
-Run `install.ps1` will automatically create a venv for you and install necessary deps. 
+Run `install.ps1` to install dependencies from `pyproject.toml` into a uv-managed `.venv`.
 If you are in China mainland, please use `install-cn.ps1`
 
 #### Train
@@ -78,7 +78,7 @@ To open the browser automatically, run `python gui.py --open-browser`.
 
 #### Installation
 
-Run `install.bash` will create a venv and install necessary deps. 
+Run `install.bash` to install dependencies from `pyproject.toml` into a uv-managed `.venv`.
 
 #### Train
 
@@ -91,7 +91,7 @@ To open the browser automatically, run `python gui.py --open-browser`.
 
 #### Installation
 
-Run `install.ps1` will automatically create a venv for you and install necessary deps.
+Run `install.ps1` to install dependencies from `pyproject.toml` into a uv-managed `.venv`.
 
 #### Train
 
@@ -101,14 +101,14 @@ Edit `train.ps1`, and run it.
 
 #### Installation
 
-Run `install.bash` will create a venv and install necessary deps.
+Run `install.bash` to install dependencies from `pyproject.toml` into a uv-managed `.venv`.
 
 #### Train
 
-Training script `train.sh` **will not** activate venv for you. You should activate venv first.
+Training script `train.sh` **will not** activate the environment for you. You should activate it first.
 
 ```sh
-source venv/bin/activate
+source .venv/bin/activate
 ```
 
 Edit `train.sh`, and run it.
