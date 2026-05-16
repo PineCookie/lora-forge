@@ -29,6 +29,7 @@ parser.add_argument("--tensorboard-host", type=str, default="127.0.0.1", help="P
 parser.add_argument("--tensorboard-port", type=int, default=6006, help="Port to run the tensorboard")
 parser.add_argument("--localization", type=str)
 parser.add_argument("--dev", action="store_true")
+parser.add_argument("--open-browser", action="store_true", help="Open the browser after the server starts")
 
 
 @catch_exception
@@ -74,15 +75,16 @@ def launch():
 
     log.info(f"SD-Trainer Version: {git_tag(str(base_dir_path()))}")
 
+    if args.listen:
+        args.host = "0.0.0.0"
+        args.tensorboard_host = "0.0.0.0"
+
     os.environ["MIKAZUKI_HOST"] = args.host
     os.environ["MIKAZUKI_PORT"] = str(args.port)
     os.environ["MIKAZUKI_TENSORBOARD_HOST"] = args.tensorboard_host
     os.environ["MIKAZUKI_TENSORBOARD_PORT"] = str(args.tensorboard_port)
     os.environ["MIKAZUKI_DEV"] = "1" if args.dev else "0"
-
-    if args.listen:
-        args.host = "0.0.0.0"
-        args.tensorboard_host = "0.0.0.0"
+    os.environ["MIKAZUKI_OPEN_BROWSER"] = "1" if args.open_browser else "0"
 
     if args.enable_tageditor:
         run_tag_editor()

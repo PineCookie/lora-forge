@@ -71,7 +71,8 @@ If you are in China mainland, please use `install-cn.ps1`
 
 #### Train
 
-run `run_gui.ps1`, then program will open [http://127.0.0.1:28000](http://127.0.0.1:28000) automanticlly
+Run `run_gui.ps1`, then open [http://127.0.0.1:28000](http://127.0.0.1:28000) in your browser.
+To open the browser automatically, run `python gui.py --open-browser`.
 
 ### Linux
 
@@ -81,7 +82,8 @@ Run `install.bash` will create a venv and install necessary deps.
 
 #### Train
 
-run `bash run_gui.sh`, then program will open [http://127.0.0.1:28000](http://127.0.0.1:28000) automanticlly
+Run `bash run_gui.sh`, then open [http://127.0.0.1:28000](http://127.0.0.1:28000) in your browser.
+To open the browser automatically, run `python gui.py --open-browser`.
 
 ## Legacy training through run script manually
 
@@ -131,3 +133,4 @@ Run `tensorboard.ps1` will start TensorBoard at http://localhost:6006/
 | `--tensorboard-port`          | int   | 6006          | Port to run TensorBoard                          |
 | `--localization`              | str   |               | Localization settings for the interface          |
 | `--dev`                       | bool  | false         | Developer mode to disale some checks             |
+| `--open-browser`              | bool  | false         | Open the browser after the server starts         |
