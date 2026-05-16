@@ -5,19 +5,26 @@ import platform
 import subprocess
 import sys
 
-from mikazuki.launch_utils import (base_dir_path, catch_exception, git_tag,
-                                   prepare_environment, check_port_avaliable, find_avaliable_ports)
+from mikazuki.launch_utils import (
+    base_dir_path,
+    catch_exception,
+    git_tag,
+    check_port_avaliable,
+    find_avaliable_ports,
+    prepare_sd_scripts,
+)
 from mikazuki.log import log
 
 parser = argparse.ArgumentParser(description="GUI for stable diffusion training")
 parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--port", type=int, default=28000, help="Port to run the server on")
 parser.add_argument("--listen", action="store_true")
-parser.add_argument("--skip-prepare-environment", action="store_true")
 parser.add_argument("--skip-prepare-onnxruntime", action="store_true")
-parser.add_argument("--disable-tensorboard", action="store_true")
-parser.add_argument("--disable-tageditor", action="store_true")
+parser.add_argument("--enable-tensorboard", action="store_true")
+parser.add_argument("--enable-tageditor", action="store_true")
 parser.add_argument("--disable-auto-mirror", action="store_true")
+parser.add_argument("--skip-prepare-sd-scripts", action="store_true")
+parser.add_argument("--sd-scripts-branch", type=str, default="sd3")
 parser.add_argument("--tensorboard-host", type=str, default="127.0.0.1", help="Port to run the tensorboard")
 parser.add_argument("--tensorboard-port", type=int, default=6006, help="Port to run the tensorboard")
 parser.add_argument("--localization", type=str)
@@ -44,8 +51,8 @@ def run_tag_editor():
     if args.localization:
         cmd.extend(["--localization", args.localization])
     else:
-        l = locale.getdefaultlocale()[0]
-        if l and l.startswith("zh"):
+        l = locale.getencoding()
+        if l and l.startswith("cp936"):
             cmd.extend(["--localization", "zh-Hans"])
     subprocess.Popen(cmd)
 
@@ -55,8 +62,8 @@ def launch():
     log.info(f"Base directory: {base_dir_path()}, Working directory: {os.getcwd()}")
     log.info(f"{platform.system()} Python {platform.python_version()} {sys.executable}")
 
-    if not args.skip_prepare_environment:
-        prepare_environment(disable_auto_mirror=args.disable_auto_mirror)
+    if not args.skip_prepare_sd_scripts:
+        prepare_sd_scripts(args.sd_scripts_branch)
 
     if not check_port_avaliable(args.port):
         avaliable = find_avaliable_ports(30000, 30000+20)
@@ -65,7 +72,7 @@ def launch():
         else:
             log.error("port finding fallback error")
 
-    log.info(f"SD-Trainer Version: {git_tag(base_dir_path())}")
+    log.info(f"SD-Trainer Version: {git_tag(str(base_dir_path()))}")
 
     os.environ["MIKAZUKI_HOST"] = args.host
     os.environ["MIKAZUKI_PORT"] = str(args.port)
@@ -77,10 +84,10 @@ def launch():
         args.host = "0.0.0.0"
         args.tensorboard_host = "0.0.0.0"
 
-    if not args.disable_tageditor:
+    if args.enable_tageditor:
         run_tag_editor()
 
-    if not args.disable_tensorboard:
+    if args.enable_tensorboard:
         run_tensorboard()
 
     import uvicorn

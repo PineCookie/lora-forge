@@ -122,9 +122,11 @@ Run `tensorboard.ps1` will start TensorBoard at http://localhost:6006/
 | `--host`                      | str   | "127.0.0.1"   | Hostname for the server                          |
 | `--port`                      | int   | 28000         | Port to run the server                           |
 | `--listen`                    | bool  | false         | Enable listening mode for the server             |
-| `--skip-prepare-environment`  | bool  | false         | Skip the environment preparation step            |
-| `--disable-tensorboard`       | bool  | false         | Disable TensorBoard                              |
-| `--disable-tageditor`         | bool  | false         | Disable tag editor                               |
+| `--skip-prepare-onnxruntime`  | bool  | false         | Skip preparing ONNX Runtime                      |
+| `--skip-prepare-sd-scripts`   | bool  | false         | Skip cloning kohya-ss/sd-scripts                |
+| `--sd-scripts-branch`         | str   | "sd3"         | Branch to clone from kohya-ss/sd-scripts        |
+| `--enable-tensorboard`        | bool  | false         | Enable TensorBoard                               |
+| `--enable-tageditor`          | bool  | false         | Enable tag editor                                |
 | `--tensorboard-host`          | str   | "127.0.0.1"   | Host to run TensorBoard                          |
 | `--tensorboard-port`          | int   | 6006          | Port to run TensorBoard                          |
 | `--localization`              | str   |               | Localization settings for the interface          |

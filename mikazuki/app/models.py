@@ -38,7 +38,16 @@ class APIResponse(BaseModel):
 
 class APIResponseSuccess(APIResponse):
     status: str = "success"
+    message: Optional[str] = None
+    data: Optional[Dict] = None
 
 
 class APIResponseFail(APIResponse):
     status: str = "fail"
+    message: Optional[str] = None
+    data: Optional[Dict] = None
+
+class APIResponsePending(APIResponse):
+    status: str = "pending"
+    message: Optional[str] = None
+    data: Optional[Dict] = None

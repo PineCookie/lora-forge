@@ -18,7 +18,7 @@ import mikazuki.process as process
 from mikazuki import launch_utils
 from mikazuki.app.config import app_config
 from mikazuki.app.models import (APIResponse, APIResponseFail,
-                                 APIResponseSuccess, TaggerInterrogateRequest)
+                                 APIResponseSuccess, APIResponsePending, TaggerInterrogateRequest)
 from mikazuki.log import log
 from mikazuki.tagger.interrogator import (available_interrogators,
                                           on_interrogate)
@@ -41,15 +41,15 @@ avaliable_schemas = []
 avaliable_presets = []
 
 trainer_mapping = {
-    "sd-lora": "./scripts/stable/train_network.py",
-    "sdxl-lora": "./scripts/stable/sdxl_train_network.py",
+    "sd-lora": "./scripts/sd-scripts/train_network.py",
+    "sdxl-lora": "./scripts/sd-scripts/sdxl_train_network.py",
 
-    "sd-dreambooth": "./scripts/stable/train_db.py",
-    "sdxl-finetune": "./scripts/stable/sdxl_train.py",
+    "sd-dreambooth": "./scripts/sd-scripts/train_db.py",
+    "sdxl-finetune": "./scripts/sd-scripts/sdxl_train.py",
 
-    "sd3-lora": "./scripts/dev/sd3_train_network.py",
-    "flux-lora": "./scripts/dev/flux_train_network.py",
-    "flux-finetune": "./scripts/dev/flux_train.py",
+    "sd3-lora": "./scripts/sd-scripts/sd3_train_network.py",
+    "flux-lora": "./scripts/sd-scripts/flux_train_network.py",
+    "flux-finetune": "./scripts/sd-scripts/flux_train.py",
 }
 
 
@@ -108,8 +108,8 @@ def get_sample_prompts(config: dict) -> Tuple[Optional[str], str]:
         txt_files = glob(os.path.join(sub_dir[0], '*.txt'))
         if not txt_files:
             raise ValueError('训练数据集路径没有 txt 文件')
+        sample_prompt_file = random.choice(txt_files)
         try:
-            sample_prompt_file = random.choice(txt_files)
             with open(sample_prompt_file, 'r', encoding='utf-8') as f:
                 positive_prompts = f.read()
         except IOError:
@@ -229,6 +229,8 @@ async def pick_file(picker_type: str):
     elif picker_type == "model-file":
         file_types = [("checkpoints", "*.safetensors;*.ckpt;*.pt"), ("all files", "*.*")]
         coro = asyncio.to_thread(open_file_selector, "", "Select file", file_types)
+    else:
+        exit(1)
 
     result = await coro
     if result == "":
@@ -277,7 +279,7 @@ async def get_files(pick_type) -> APIResponse:
                 result_list.append({
                     "path": str(file.resolve().absolute()).replace("\\", "/"),
                     "name": file.name,
-                    "size": f"{round(file.stat().st_size / (1024**3),2)} GB"
+                    "size": f"{round(file.stat().st_size / (1024**3), 2)} GB"
                 })
         elif file_type == "folder":
             folders = [f for f in path.iterdir() if f.is_dir()]
@@ -317,7 +319,7 @@ async def terminate_task(task_id: str):
 @router.get("/graphic_cards")
 async def list_avaliable_cards() -> APIResponse:
     if not printable_devices:
-        return APIResponse(status="pending")
+        return APIResponsePending()
 
     return APIResponseSuccess(data={
         "cards": printable_devices

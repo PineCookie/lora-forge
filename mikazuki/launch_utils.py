@@ -23,7 +23,8 @@ def base_dir_path():
 
 
 def find_windows_git():
-    possible_paths = ["git\\bin\\git.exe", "git\\cmd\\git.exe", "Git\\mingw64\\libexec\\git-core\\git.exe", "C:\\Program Files\\Git\\cmd\\git.exe"]
+    possible_paths = ["git\\bin\\git.exe", "git\\cmd\\git.exe",
+                      "Git\\mingw64\\libexec\\git-core\\git.exe", "C:\\Program Files\\Git\\cmd\\git.exe"]
     for path in possible_paths:
         if os.path.exists(path):
             return path
@@ -61,6 +62,36 @@ def prepare_submodules():
             sys.exit(1)
         subprocess.run(["git", "submodule", "init"])
         subprocess.run(["git", "submodule", "update"])
+
+
+def prepare_sd_scripts(branch: str = "sd3"):
+    sd_scripts_path = base_dir_path() / "scripts" / "sd-scripts"
+
+    if (sd_scripts_path / ".git").exists():
+        return
+
+    if sd_scripts_path.exists() and any(sd_scripts_path.iterdir()):
+        log.warning(f"sd-scripts path already exists and is not empty: {sd_scripts_path}")
+        return
+
+    if not prepare_git():
+        log.error("git not found, please install git first")
+        sys.exit(1)
+
+    sd_scripts_path.parent.mkdir(parents=True, exist_ok=True)
+    log.info(f"Cloning kohya-ss/sd-scripts branch {branch} to {sd_scripts_path}...")
+    result = subprocess.run([
+        "git",
+        "clone",
+        "--depth",
+        "1",
+        "--branch",
+        branch,
+        "https://github.com/kohya-ss/sd-scripts.git",
+        str(sd_scripts_path),
+    ])
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to clone kohya-ss/sd-scripts branch {branch}")
 
 
 def git_tag(path: str) -> str:
