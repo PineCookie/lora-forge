@@ -122,53 +122,58 @@ def get_sample_prompts(config: dict) -> Tuple[Optional[str], str]:
 
 @router.post("/run")
 async def create_toml_file(request: Request):
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    toml_file = os.path.join(os.getcwd(), f"config", "autosave", f"{timestamp}.toml")
-    json_data = await request.body()
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        toml_file = os.path.join(os.getcwd(), f"config", "autosave", f"{timestamp}.toml")
+        json_data = await request.body()
 
-    config: dict = json.loads(json_data.decode("utf-8"))
-    train_utils.fix_config_types(config)
+        config: dict = json.loads(json_data.decode("utf-8"))
+        log.info(f"Training config received: {config}")
+        train_utils.fix_config_types(config)
 
-    gpu_ids = config.pop("gpu_ids", None)
+        gpu_ids = config.pop("gpu_ids", None)
 
-    suggest_cpu_threads = 8 if len(train_utils.get_total_images(config["train_data_dir"])) > 200 else 2
-    model_train_type = config.pop("model_train_type", "sd-lora")
-    trainer_file = trainer_mapping[model_train_type]
+        suggest_cpu_threads = 8 if len(train_utils.get_total_images(config["train_data_dir"])) > 200 else 2
+        model_train_type = config.pop("model_train_type", "sd-lora")
+        trainer_file = trainer_mapping[model_train_type]
 
-    if model_train_type != "sdxl-finetune":
-        if not train_utils.validate_data_dir(config["train_data_dir"]):
-            return APIResponseFail(message="训练数据集路径不存在或没有图片，请检查目录。")
+        if model_train_type != "sdxl-finetune":
+            if not train_utils.validate_data_dir(config["train_data_dir"]):
+                return APIResponseFail(message="训练数据集路径不存在或没有图片，请检查目录。")
 
-    validated, message = train_utils.validate_model(config["pretrained_model_name_or_path"], model_train_type)
-    if not validated:
-        return APIResponseFail(message=message)
+        validated, message = train_utils.validate_model(config["pretrained_model_name_or_path"], model_train_type)
+        if not validated:
+            return APIResponseFail(message=message)
 
-    if "prompt_file" in config and config["prompt_file"].strip() != "":
-        prompt_file = config["prompt_file"].strip()
-        if not os.path.exists(prompt_file):
-            return APIResponseFail(message=f"Prompt 文件 {prompt_file} 不存在，请检查路径。")
-        config["sample_prompts"] = prompt_file
-    else:
-        try:
-            positive_prompt, sample_prompts_arg = get_sample_prompts(config=config)
+        if "prompt_file" in config and config["prompt_file"].strip() != "":
+            prompt_file = config["prompt_file"].strip()
+            if not os.path.exists(prompt_file):
+                return APIResponseFail(message=f"Prompt 文件 {prompt_file} 不存在，请检查路径。")
+            config["sample_prompts"] = prompt_file
+        else:
+            try:
+                positive_prompt, sample_prompts_arg = get_sample_prompts(config=config)
 
-            if positive_prompt is not None and train_utils.is_promopt_like(sample_prompts_arg):
-                sample_prompts_file = os.path.join(os.getcwd(), f"config", "autosave", f"{timestamp}-promopt.txt")
-                with open(sample_prompts_file, "w", encoding="utf-8") as f:
-                    f.write(sample_prompts_arg)
-                config["sample_prompts"] = sample_prompts_file
-                log.info(f"Wrote prompts to file {sample_prompts_file}")
+                if positive_prompt is not None and train_utils.is_promopt_like(sample_prompts_arg):
+                    sample_prompts_file = os.path.join(os.getcwd(), f"config", "autosave", f"{timestamp}-promopt.txt")
+                    with open(sample_prompts_file, "w", encoding="utf-8") as f:
+                        f.write(sample_prompts_arg)
+                    config["sample_prompts"] = sample_prompts_file
+                    log.info(f"Wrote prompts to file {sample_prompts_file}")
 
-        except ValueError as e:
-            log.error(f"Error while processing prompts: {e}")
-            return APIResponseFail(message=str(e))
+            except ValueError as e:
+                log.error(f"Error while processing prompts: {e}")
+                return APIResponseFail(message=str(e))
 
-    with open(toml_file, "w", encoding="utf-8") as f:
-        f.write(toml.dumps(config))
+        with open(toml_file, "w", encoding="utf-8") as f:
+            f.write(toml.dumps(config))
 
-    result = process.run_train(toml_file, trainer_file, gpu_ids, suggest_cpu_threads)
-
-    return result
+        result = process.run_train(toml_file, trainer_file, gpu_ids, suggest_cpu_threads)
+        log.info(f"Training task started: {result}")
+        return result
+    except Exception as e:
+        log.error(f"Error in /run endpoint: {e}", exc_info=True)
+        return APIResponseFail(message=f"Server error: {str(e)}")
 
 
 @router.post("/run_script")

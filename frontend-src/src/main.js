@@ -125,7 +125,7 @@ async function api(path, options) {
     throw new Error(`${hint} (${path})`);
   }
   if (json.status === "fail") throw new Error(json.message || "请求失败");
-  return json.data ?? {};
+  return { message: json.message, ...json.data } ?? {};
 }
 
 async function loadSchemas() {
@@ -245,7 +245,7 @@ function withFrontendOptimizerFields(groups) {
   const optimizerField = optimizerGroup?.fields.find((field) => field.name === "optimizer_type");
   const optimizerOptions = optimizerField ? schemaOptions(optimizerField.schema) ?? [] : [];
 
-  if (!optimizerOptions.includes("ProdigyPlusScheduleFree")) return groups;
+  if (!optimizerOptions.includes("prodigyplus.ProdigyPlusScheduleFree")) return groups;
 
   const fields = [];
   if (!allNames.has("prodigy_d0")) {
@@ -356,7 +356,7 @@ function normalizeTrainingConfig(config) {
     if (config.prodigy_d_coef !== undefined) config.optimizer_args.push(`d_coef=${config.prodigy_d_coef}`);
     if (config.lr_warmup_steps) config.optimizer_args.push("safeguard_warmup=True");
     if (config.prodigy_d0) config.optimizer_args.push(`d0=${config.prodigy_d0}`);
-  } else if (optimizerType === "ProdigyPlusScheduleFree") {
+  } else if (optimizerType === "prodigyplus.ProdigyPlusScheduleFree") {
     config.learning_rate = 1;
     config.unet_lr = 1;
     config.text_encoder_lr = 1;
@@ -575,7 +575,7 @@ function renderField(name, schema) {
   } else {
     const min = schema.meta.min !== undefined ? `min="${schema.meta.min}"` : "";
     const max = schema.meta.max !== undefined ? `max="${schema.meta.max}"` : "";
-    const step = schema.meta.step !== undefined ? `step="${schema.meta.step}"` : "";
+    const step = schema.meta.step !== undefined ? `step="${schema.meta.step}"` : (fieldType(schema) === "number" ? `step="any"` : "");
     control = `<input id="${id}" name="${name}" type="${fieldType(schema)}" value="${escapeAttr(value)}" ${min} ${max} ${step} ${disabled} />`;
   }
 
@@ -595,9 +595,9 @@ function visibilityRule(name) {
   const rules = {
     prodigy_d0: ["optimizer_type", "Prodigy"],
     prodigy_d_coef: ["optimizer_type", "Prodigy"],
-    prodigyplus_d_coef: ["optimizer_type", "ProdigyPlusScheduleFree"],
-    prodigyplus_betas: ["optimizer_type", "ProdigyPlusScheduleFree"],
-    prodigyplus_schedulefree_c: ["optimizer_type", "ProdigyPlusScheduleFree"],
+    prodigyplus_d_coef: ["optimizer_type", "prodigyplus.ProdigyPlusScheduleFree"],
+    prodigyplus_betas: ["optimizer_type", "prodigyplus.ProdigyPlusScheduleFree"],
+    prodigyplus_schedulefree_c: ["optimizer_type", "prodigyplus.ProdigyPlusScheduleFree"],
     lycoris_algo: ["network_module", "lycoris.kohya"],
     conv_dim: ["network_module", "lycoris.kohya"],
     conv_alpha: ["network_module", "lycoris.kohya"],
@@ -642,15 +642,19 @@ function bindForm(groups) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const config = readForm(groups);
+    console.log("Form submitted with config:", config);
     try {
       setStatus("正在启动训练...");
+      console.log("Sending request to /api/run");
       const result = await api("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
       });
+      console.log("API response:", result);
       setStatus(result.message || "训练任务已提交");
     } catch (error) {
+      console.error("Error:", error);
       setStatus(error.message);
     }
   });

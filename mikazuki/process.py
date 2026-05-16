@@ -2,6 +2,7 @@
 import asyncio
 import os
 import sys
+import re
 from typing import Optional
 
 from mikazuki.app.models import APIResponse
@@ -29,8 +30,9 @@ def run_train(toml_path: str,
     customize_env["PYTHONWARNINGS"] = "ignore::FutureWarning,ignore::UserWarning"
 
     if gpu_ids:
-        customize_env["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_ids)
         log.info(f"Using GPU(s) / 使用 GPU: {gpu_ids}")
+        gpu_devices = [re.search(r"GPU\s+(\d+):", gpu).group(1) for gpu in gpu_ids]
+        customize_env["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_devices)
 
         if len(gpu_ids) > 1:
             args[3:3] = ["--multi_gpu", "--num_processes", str(len(gpu_ids))]
@@ -39,7 +41,7 @@ def run_train(toml_path: str,
                 args[3:3] = ["--rdzv_backend", "c10d"]
 
     if not (task := tm.create_task(args, customize_env)):
-        return APIResponse(status="error", message="Failed to create task / 无法创建训练任务")
+        return APIResponse(status="fail", message="Failed to create task / 无法创建训练任务", data=None)
 
     def _run():
         try:
@@ -55,4 +57,4 @@ def run_train(toml_path: str,
     coro = asyncio.to_thread(_run)
     asyncio.create_task(coro)
 
-    return APIResponse(status="success", message=f"Training started / 训练开始 ID: {task.task_id}")
+    return APIResponse(status="success", message=f"Training started / 训练开始 ID: {task.task_id}", data=None)

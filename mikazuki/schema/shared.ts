@@ -153,7 +153,7 @@
                     "DAdaptSGD",
                     "AdaFactor",
                     "Prodigy",
-                    "ProdigyPlusScheduleFree",
+                    "prodigyplus.ProdigyPlusScheduleFree",
                     "pytorch_optimizer.CAME"
                 ]).default("AdamW8bit").description("优化器设置"),
                 min_snr_gamma: Schema.number().step(0.1).description("最小信噪比伽马值, 如果启用推荐为 5"),
@@ -166,7 +166,7 @@
                     prodigy_d_coef: Schema.string().default("2.0"),
                 }),
                 Schema.object({
-                    optimizer_type: Schema.const('ProdigyPlusScheduleFree').required(),
+                    optimizer_type: Schema.const('prodigyplus.ProdigyPlusScheduleFree').required(),
                     prodigyplus_d_coef: Schema.string().default("1.0").description("Prodigy Plus d_coef。官方默认 1.0，可尝试 2 或更高帮助 LR 增长"),
                     prodigyplus_betas: Schema.string().default("(0.95, 0.99)").description("Prodigy Plus betas，需为 Python tuple 格式，例如 (0.95, 0.99)"),
                     prodigyplus_schedulefree_c: Schema.string().default("10").description("Prodigy Plus schedulefree_c。官方默认 0"),
