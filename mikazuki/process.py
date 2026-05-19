@@ -27,6 +27,8 @@ def run_train(toml_path: str,
     customize_env = os.environ.copy()
     customize_env["ACCELERATE_DISABLE_RICH"] = "1"
     customize_env["PYTHONUNBUFFERED"] = "1"
+    if sys.platform == "win32":
+        customize_env["PYTHONUTF8"] = "0"
     customize_env["PYTHONWARNINGS"] = "ignore::FutureWarning,ignore::UserWarning"
 
     if gpu_ids:
