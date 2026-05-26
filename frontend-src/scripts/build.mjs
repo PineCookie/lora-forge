@@ -11,6 +11,7 @@ await mkdir(resolve(outDir, "assets"), { recursive: true });
 
 await copyFile(resolve(root, "src/main.js"), resolve(outDir, "assets/main.js"));
 await copyFile(resolve(root, "src/styles.css"), resolve(outDir, "assets/styles.css"));
+await copyFile(resolve(root, "../assets/logo.svg"), resolve(outDir, "assets/logo.svg"));
 await copyFile(resolve(root, "index.html"), resolve(outDir, "index.html"));
 
 const routes = [

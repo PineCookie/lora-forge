@@ -83,6 +83,8 @@ def launch():
     os.environ["MIKAZUKI_PORT"] = str(args.port)
     os.environ["MIKAZUKI_TENSORBOARD_HOST"] = args.tensorboard_host
     os.environ["MIKAZUKI_TENSORBOARD_PORT"] = str(args.tensorboard_port)
+    os.environ["MIKAZUKI_ENABLE_TENSORBOARD"] = "1" if args.enable_tensorboard else "0"
+    os.environ["MIKAZUKI_ENABLE_TAGEDITOR"] = "1" if args.enable_tageditor else "0"
     os.environ["MIKAZUKI_DEV"] = "1" if args.dev else "0"
     os.environ["MIKAZUKI_OPEN_BROWSER"] = "1" if args.open_browser else "0"
 

@@ -333,6 +333,16 @@ async def list_avaliable_cards() -> APIResponse:
     })
 
 
+@router.get("/runtime")
+async def get_runtime() -> APIResponse:
+    return APIResponseSuccess(data={
+        "services": {
+            "tensorboard": os.environ.get("MIKAZUKI_ENABLE_TENSORBOARD", "0") == "1",
+            "tageditor": os.environ.get("MIKAZUKI_ENABLE_TAGEDITOR", "0") == "1",
+        }
+    })
+
+
 @router.get("/schemas/hashes")
 async def list_schema_hashes() -> APIResponse:
     if os.environ.get("MIKAZUKI_SCHEMA_HOT_RELOAD", "0") == "1":

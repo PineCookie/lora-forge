@@ -18,9 +18,9 @@ const routes = [
   { path: "/lora/basic.html", alias: "/lora/basic.md", title: "SD1.5", view: "trainer", schema: "lora-basic" },
   { path: "/dreambooth/index.html", alias: "/dreambooth/index.md", title: "Dreambooth", view: "trainer", schema: "dreambooth" },
   { path: "/task.html", alias: "/task.md", title: "任务", view: "tasks" },
-  { path: "/tensorboard.html", alias: "/tensorboard.md", title: "Tensorboard", view: "proxy", proxy: "/proxy/tensorboard/" },
+  { path: "/tensorboard.html", alias: "/tensorboard.md", title: "Tensorboard", view: "proxy", proxy: "/proxy/tensorboard/", service: "tensorboard" },
   { path: "/tagger.html", alias: "/tagger.md", title: "Tagger", view: "tagger" },
-  { path: "/tageditor.html", alias: "/tageditor.md", title: "标签编辑器", view: "proxy", proxy: "/proxy/tageditor/" },
+  { path: "/tageditor.html", alias: "/tageditor.md", title: "标签编辑器", view: "proxy", proxy: "/proxy/tageditor/", service: "tageditor" },
   { path: "/other/settings.html", alias: "/other/settings.md", title: "UI 设置", view: "settings" },
   { path: "/other/about.html", alias: "/other/about.md", title: "关于", view: "home" },
 ];
@@ -30,9 +30,12 @@ const state = {
   sharedSchemas: null,
   cards: [],
   current: {},
+  currentRoute: null,
+  collapsedSections: new Set(),
   fields: [],
   initialFieldValues: new Map(),
   message: "",
+  runtime: null,
 };
 
 class SchemaNode {
@@ -146,6 +149,15 @@ async function loadSchemas() {
   state.cards = await loadGraphicCards();
 }
 
+async function loadRuntime() {
+  try {
+    state.runtime = await api("/api/runtime");
+  } catch (error) {
+    console.warn("Failed to load runtime information", error);
+    state.runtime = { services: {} };
+  }
+}
+
 async function loadGraphicCards() {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -199,7 +211,48 @@ function flattenSchema(schema) {
   }
 
   visit(schema);
-  return groups;
+  return normalizeGroups(groups);
+}
+
+function normalizeGroups(groups) {
+  const normalized = groups
+    .map((group) => ({
+      ...group,
+      title: normalizeGroupTitle(group.title),
+      fields: group.fields.filter((field) => field.name !== "ui_custom_params"),
+    }))
+    .filter((group) => group.fields.length);
+
+  moveFieldToGroup(normalized, "seed", "训练相关参数");
+  return normalized;
+}
+
+function normalizeGroupTitle(title) {
+  if (title === "caption（Tag）选项") return "Caption 设置";
+  return title;
+}
+
+function moveFieldToGroup(groups, fieldName, targetTitle) {
+  let movedField = null;
+  for (const group of groups) {
+    const index = group.fields.findIndex((field) => field.name === fieldName);
+    if (index >= 0) {
+      [movedField] = group.fields.splice(index, 1);
+      break;
+    }
+  }
+  if (!movedField) return;
+
+  let target = groups.find((group) => group.title === targetTitle);
+  if (!target) {
+    target = { title: targetTitle, fields: [] };
+    groups.push(target);
+  }
+  target.fields.push(movedField);
+
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    if (!groups[index].fields.length) groups.splice(index, 1);
+  }
 }
 
 function inferGroupTitle(fields, fallbackTitle = "参数") {
@@ -207,7 +260,7 @@ function inferGroupTitle(fields, fallbackTitle = "参数") {
   if (hasAny(names, ["model_train_type", "pretrained_model_name_or_path", "qwen3", "vae", "clip_l", "clip_g", "t5xxl"])) return "训练用模型";
   if (hasAny(names, ["train_data_dir", "resolution", "enable_bucket", "bucket_no_upscale"])) return "数据集设置";
   if (hasAny(names, ["output_name", "output_dir", "save_model_as", "save_state", "save_last_n_epochs_state"])) return "保存设置";
-  if (hasAny(names, ["max_train_epochs", "train_batch_size", "gradient_checkpointing"])) return "训练相关参数";
+  if (hasAny(names, ["max_train_epochs", "train_batch_size", "gradient_checkpointing", "seed"])) return "训练相关参数";
   if (hasAny(names, ["optimizer_type", "learning_rate", "lr_scheduler", "lr_scheduler_num_cycles", "unet_lr", "text_encoder_lr", "optimizer_args_custom"])) return "学习率与优化器设置";
   if (hasAny(names, ["prodigy_d0", "prodigyplus_d_coef"])) return "优化器专用参数";
   if (hasAny(names, ["network_module", "network_dim", "network_alpha", "network_weights"])) return "网络设置";
@@ -216,12 +269,12 @@ function inferGroupTitle(fields, fallbackTitle = "参数") {
   if (hasAny(names, ["enable_block_weights", "down_lr_weight", "mid_lr_weight", "up_lr_weight"])) return "分层学习率设置";
   if (hasAny(names, ["enable_preview", "sample_prompts", "positive_prompts", "sample_width"])) return "训练预览图设置";
   if (hasAny(names, ["log_with", "logging_dir", "wandb_api_key"])) return "日志设置";
-  if (hasAny(names, ["caption_extension", "shuffle_caption", "keep_tokens", "max_token_length"])) return "caption（Tag）选项";
+  if (hasAny(names, ["caption_extension", "shuffle_caption", "keep_tokens", "max_token_length"])) return "Caption 设置";
   if (hasAny(names, ["noise_offset", "multires_noise_iterations"])) return "噪声设置";
   if (hasAny(names, ["color_aug", "flip_aug", "random_crop"])) return "数据增强";
   if (hasAny(names, ["mixed_precision", "xformers", "sdpa", "cache_latents", "attn_mode"])) return "速度优化选项";
   if (hasAny(names, ["ddp_timeout", "ddp_gradient_as_bucket_view"])) return "分布式训练";
-  if (hasAny(names, ["seed", "clip_skip", "ui_custom_params"])) return "其他设置";
+  if (hasAny(names, ["clip_skip"])) return "其他设置";
   return fallbackTitle;
 }
 
@@ -499,7 +552,10 @@ function appendNetworkArg(config, name) {
 function renderShell(route) {
   app.innerHTML = `
     <aside class="sidebar">
-      <a class="brand" href="/">LoRA-Forge</a>
+      <a class="brand" href="/">
+        <img class="brand-logo" src="/assets/logo.svg" alt="" />
+        <span>LoRA-Forge</span>
+      </a>
       <nav>
         <a href="/lora/index.html">LoRA 训练</a>
         <a href="/lora/master.html">SD/SDXL</a>
@@ -558,20 +614,21 @@ function renderTrainer(route) {
 
   const groups = withGpuSelector(withFrontendAnimaNetworkArgsFields(withFrontendOptimizerFields(flattenSchema(schema)), route.schema));
   state.fields = groups;
+  state.currentRoute = route;
   state.current = { ...defaultsFrom(groups), ...(route.defaults ?? {}) };
 
   content().innerHTML = `
     <form id="trainer-form" class="trainer">
       <div class="form-grid">
-        ${groups.map(renderGroup).join("")}
+        ${groups.map((group, index) => renderGroup(group, index)).join("")}
       </div>
       <aside class="actions">
-        <section class="action-group">
+        <section class="action-group action-train">
           <h2>训练</h2>
           <button type="submit" class="primary">开始训练</button>
           <button type="button" id="stop-training" class="danger">终止训练</button>
         </section>
-        <section class="action-group">
+        <section class="action-group action-config">
           <h2>配置</h2>
           <button type="button" id="reset-form">全部重置</button>
           <div class="config-action-row">
@@ -585,7 +642,7 @@ function renderTrainer(route) {
         </section>
         <section class="generated-args">
           <h2>优化器参数预览</h2>
-          <pre id="generated-args"></pre>
+          <div id="generated-args" class="args-preview"></div>
         </section>
         <section class="config-preview">
           <h2>TOML 配置预览</h2>
@@ -599,17 +656,44 @@ function renderTrainer(route) {
   updatePreview(groups);
 }
 
-function renderGroup(group) {
+function renderGroup(group, index = 0) {
+  const key = sectionCollapseKey(group.title, index);
+  const collapsed = state.collapsedSections.has(key);
   const note = group.title === "学习率与优化器设置"
     ? `<p class="section-note">切换优化器时，部分学习率、调度器和 optimizer_args 会按优化器推荐值自动重置。</p>`
     : "";
   return `
-    <section class="panel form-section">
-      <h2>${escapeHtml(group.title)}</h2>
-      ${note}
-      ${group.fields.map((field) => renderField(field.name, field.schema)).join("")}
+    <section class="panel form-section ${sectionToneClass(group.title)} ${collapsed ? "is-collapsed" : ""}" data-section-key="${escapeAttr(key)}">
+      <button
+        type="button"
+        class="section-header"
+        data-collapse-section="${escapeAttr(key)}"
+        aria-expanded="${collapsed ? "false" : "true"}"
+      >
+        <span class="section-title">${escapeHtml(group.title)}</span>
+        <span class="section-toggle-icon" aria-hidden="true">${collapsed ? "+" : "-"}</span>
+      </button>
+      <div class="section-body">
+        ${note}
+        ${group.fields.map((field) => renderField(field.name, field.schema)).join("")}
+      </div>
     </section>
   `;
+}
+
+function sectionCollapseKey(title, index) {
+  return `${state.currentRoute?.path ?? location.pathname}:${index}:${title}`;
+}
+
+function sectionToneClass(title) {
+  if (/模型|Model/i.test(title)) return "section-tone-model";
+  if (/数据集|caption|Tag/i.test(title)) return "section-tone-data";
+  if (/保存|输出/i.test(title)) return "section-tone-save";
+  if (/学习率|优化器/i.test(title)) return "section-tone-optimize";
+  if (/网络|基础权重|分层/i.test(title)) return "section-tone-network";
+  if (/预览图|日志|Tensorboard|wandb/i.test(title)) return "section-tone-observe";
+  if (/噪声|增强|速度|精度|分布式|显卡/i.test(title)) return "section-tone-performance";
+  return "section-tone-general";
 }
 
 function renderField(name, schema) {
@@ -720,10 +804,10 @@ function bindForm(groups) {
         body: JSON.stringify(config),
       });
       console.log("API response:", result);
-      setStatus(result.message || "训练任务已提交");
+      setStatus(result.message || "训练任务已提交", "success");
     } catch (error) {
       console.error("Error:", error);
-      setStatus(error.message);
+      setStatus(error.message, "error");
     }
   });
 
@@ -733,6 +817,7 @@ function bindForm(groups) {
   document.querySelector("#export-toml").addEventListener("click", () => downloadToml(readForm(groups)));
   document.querySelector("#import-config").addEventListener("change", importConfig);
   document.querySelector("#import-toml").addEventListener("change", importToml);
+  bindSectionCollapse(form);
 
   for (const button of document.querySelectorAll("[data-pick]")) {
     button.addEventListener("click", async () => {
@@ -743,13 +828,33 @@ function bindForm(groups) {
         updateEditedField(input);
         input.dispatchEvent(new Event("input", { bubbles: true }));
       } catch (error) {
-        setStatus(error.message);
+        setStatus(error.message, "error");
       }
     });
   }
   applyDependentValues();
   updateVisibility();
   captureInitialFieldValues(groups);
+}
+
+function bindSectionCollapse(form) {
+  form.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-collapse-section]");
+    if (!button || !form.contains(button)) return;
+
+    const key = button.dataset.collapseSection;
+    const section = button.closest(".form-section");
+    if (!key || !section) return;
+
+    const collapsed = !state.collapsedSections.has(key);
+    if (collapsed) state.collapsedSections.add(key);
+    else state.collapsedSections.delete(key);
+
+    section.classList.toggle("is-collapsed", collapsed);
+    button.setAttribute("aria-expanded", String(!collapsed));
+    const icon = button.querySelector(".section-toggle-icon");
+    if (icon) icon.textContent = collapsed ? "+" : "-";
+  });
 }
 
 function captureInitialFieldValues(groups) {
@@ -801,7 +906,7 @@ function readForm(groups) {
 
 function updatePreview(groups) {
   const config = readForm(groups);
-  document.querySelector("#generated-args").textContent = formatGeneratedArgs(config);
+  document.querySelector("#generated-args").innerHTML = renderGeneratedArgs(config);
   document.querySelector("#preview").textContent = toToml(config);
 }
 
@@ -896,12 +1001,19 @@ function setFieldValue(name, value) {
   input.value = value;
 }
 
-function formatGeneratedArgs(config) {
+function renderGeneratedArgs(config) {
   const sections = [];
   if (config.optimizer_args?.length) sections.push(["optimizer_args", config.optimizer_args]);
   if (config.network_args?.length) sections.push(["network_args", config.network_args]);
-  if (!sections.length) return "无";
-  return sections.map(([name, args]) => `${name}:\n${args.map((arg) => `  ${arg}`).join("\n")}`).join("\n\n");
+  if (!sections.length) return "";
+  return sections
+    .map(([name, args]) => `
+      <div class="args-section">
+        <div class="args-name">${escapeHtml(name)}:</div>
+        ${args.map((arg) => `<div class="args-value">${escapeHtml(arg)}</div>`).join("")}
+      </div>
+    `)
+    .join("");
 }
 
 function downloadJson(config) {
@@ -936,12 +1048,36 @@ async function importToml(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
-    applyImportedConfig(fromToml(await file.text()));
-    setStatus("TOML 导入成功");
+    const config = fromToml(await file.text());
+    validateImportedTomlForRoute(config);
+    applyImportedConfig(config);
+    setStatus("TOML 导入成功", "success");
   } catch (error) {
-    setStatus(`TOML 导入失败：${error.message}`);
+    setStatus(`TOML 导入失败：${error.message}`, "error");
   }
   event.target.value = "";
+}
+
+function validateImportedTomlForRoute(config) {
+  const importedType = config.model_train_type;
+  if (!importedType) return;
+
+  const allowedTypes = allowedModelTrainTypesForCurrentRoute();
+  if (!allowedTypes.length || allowedTypes.includes(importedType)) return;
+
+  throw new Error(`当前页面只支持 ${allowedTypes.join(" / ")}，导入文件是 ${importedType}`);
+}
+
+function allowedModelTrainTypesForCurrentRoute() {
+  const route = state.currentRoute ?? routeFor(location.pathname);
+  const groups = state.fields ?? [];
+  const field = groups.flatMap((group) => group.fields).find((item) => item.name === "model_train_type");
+  const schemaTypes = field ? schemaOptions(field.schema) ?? [] : [];
+  const defaultType = route.defaults?.model_train_type;
+  if (defaultType) return [defaultType];
+  if (schemaTypes.length) return schemaTypes;
+  const currentType = state.current?.model_train_type;
+  return currentType ? [currentType] : [];
 }
 
 function applyImportedConfig(config) {
@@ -1093,7 +1229,7 @@ async function stopTraining() {
     const data = await api("/api/tasks");
     const runningTasks = (data.tasks ?? []).filter((task) => task.status === "RUNNING");
     if (!runningTasks.length) {
-      setStatus("当前没有正在运行的训练任务");
+      setStatus("当前没有正在运行的训练任务", "warning");
       return;
     }
 
@@ -1101,9 +1237,9 @@ async function stopTraining() {
     if (!confirm(`确定要停止任务 ${task.id} 吗？`)) return;
 
     await api(`/api/tasks/terminate/${encodeURIComponent(task.id)}`);
-    setStatus(`已停止任务 ${task.id}`);
+    setStatus(`已停止任务 ${task.id}`, "success");
   } catch (error) {
-    setStatus(`停止训练失败：${error.message}`);
+    setStatus(`停止训练失败：${error.message}`, "error");
   }
 }
 
@@ -1118,14 +1254,30 @@ function renderTask(task) {
 }
 
 function renderProxy(route) {
+  if (route.service && state.runtime?.services?.[route.service] === false) {
+    renderServiceUnavailable(route);
+    return;
+  }
   content().innerHTML = `<iframe class="proxy-frame" src="${escapeAttr(route.proxy)}" title="${escapeAttr(route.title)}"></iframe>`;
+}
+
+function renderServiceUnavailable(route) {
+  const command = route.service === "tensorboard" ? "--enable-tensorboard" : "--enable-tageditor";
+  content().innerHTML = `
+    <section class="panel service-unavailable">
+      <h2>${escapeHtml(route.title)} 未启动</h2>
+      <p>当前 UI 启动时没有启用这个服务，因此不会连接 ${escapeHtml(route.proxy)}。</p>
+      <p>需要使用时，请用 <code>${escapeHtml(command)}</code> 重新启动 GUI。</p>
+    </section>
+  `;
 }
 
 function renderTagger() {
   content().innerHTML = `
-    <section class="panel">
-      <h2>Tagger</h2>
-      <p>Tagger 页面会在后续从 dist 中迁移。当前训练配置页面已优先接入源码。</p>
+    <section class="panel service-unavailable">
+      <h2>Tagger 尚未接入源码前端</h2>
+      <p>Tagger 后端接口已经存在，但这个轻量源码前端还没有迁移对应页面。</p>
+      <p>需要批量标注时，请先使用 Tag Editor，启动 GUI 时加上 <code>--enable-tageditor</code>。</p>
     </section>
   `;
 }
@@ -1141,6 +1293,7 @@ function renderSettings() {
 
 async function render() {
   const route = routeFor(location.pathname);
+  if (!state.runtime) await loadRuntime();
   renderShell(route);
   if (!state.schemas.size) await loadSchemas();
 
@@ -1157,10 +1310,41 @@ function content() {
   return document.querySelector("#content");
 }
 
-function setStatus(message) {
+function setStatus(message, type = "info") {
   state.message = message;
   const status = document.querySelector("#status");
   if (status) status.textContent = message;
+  showToast(message, type);
+}
+
+function showToast(message, type = "info") {
+  const root = toastRoot();
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.setAttribute("role", type === "error" ? "alert" : "status");
+  toast.innerHTML = `
+    <div class="toast-body">${escapeHtml(message)}</div>
+    <button type="button" class="toast-close" aria-label="Close notification">x</button>
+  `;
+  root.appendChild(toast);
+
+  const close = () => {
+    toast.classList.add("is-leaving");
+    setTimeout(() => toast.remove(), 180);
+  };
+  toast.querySelector(".toast-close").addEventListener("click", close);
+  setTimeout(close, type === "error" ? 11000 : 7200);
+}
+
+function toastRoot() {
+  let root = document.querySelector("#toast-root");
+  if (root) return root;
+  root = document.createElement("div");
+  root.id = "toast-root";
+  root.setAttribute("aria-live", "polite");
+  root.setAttribute("aria-atomic", "false");
+  document.body.appendChild(root);
+  return root;
 }
 
 function escapeHtml(value) {
