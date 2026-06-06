@@ -49,7 +49,7 @@ Schema.intersect([
     SHARED_SCHEMAS.LR_OPTIMIZER,
 
     // 损失设置
-    SHARED_SCHEMAS.LOSS_SETTINGS,
+    SHARED_SCHEMAS.LOSS_SETTINGS_NO_WEIGHTING,
 
     Schema.intersect([
         Schema.object({

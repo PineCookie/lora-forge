@@ -199,6 +199,26 @@
             ]),
         ]),
 
+        LOSS_SETTINGS_NO_WEIGHTING: Schema.intersect([
+            Schema.object({
+                loss_type: Schema.union(["l1", "l2", "huber", "smooth_l1"]).default("l2").description("损失函数类型"),
+            }).description("损失设置"),
+
+            Schema.union([
+                Schema.object({
+                    loss_type: Schema.const('huber').required(),
+                    huber_schedule: Schema.union(["constant", "exponential", "snr"]).default("snr").description("Huber 损失调度方式，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                    huber_c: Schema.number().step(0.001).default(0.1).description("Huber 损失衰减参数，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                }),
+                Schema.object({
+                    loss_type: Schema.const('smooth_l1').required(),
+                    huber_schedule: Schema.union(["constant", "exponential", "snr"]).default("snr").description("Huber 损失调度方式，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                    huber_c: Schema.number().step(0.001).default(0.1).description("Huber 损失衰减参数，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                }),
+                Schema.object({}),
+            ]),
+        ]),
+
         FULL_PRECISION_MODE: Schema.object({
             full_precision: Schema.union(["none", "full_fp16", "full_bf16"]).default("none").description("完全精度模式。full_fp16 与 full_bf16 不能同时启用"),
         }).description("完全精度设置"),
