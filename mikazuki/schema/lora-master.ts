@@ -17,10 +17,14 @@ Schema.intersect([
 
         Schema.union([
             Schema.object({
-                model_train_type: Schema.const("sd-lora"),
-                v2: Schema.const(true).required(),
-                v_parameterization: Schema.boolean().default(false).description("v-parameterization 学习"),
-                scale_v_pred_loss_like_noise_pred: Schema.boolean().default(false).description("缩放 v-prediction 损失（与v-parameterization配合使用）"),
+                model_train_type: Schema.const("sd-lora").required(),
+                v_parameterization: Schema.boolean().default(false).description("V-Pred 模型需要启用 v-parameterization，例如 SD2 768-v、NoobXL V-Pred 或基于 V-Pred 模型微调的模型"),
+                scale_v_pred_loss_like_noise_pred: Schema.boolean().default(false).description("仅用于 V-Pred 模型：像 noise prediction loss 一样缩放 v-prediction loss"),
+            }),
+            Schema.object({
+                model_train_type: Schema.const("sdxl-lora").required(),
+                v_parameterization: Schema.boolean().default(false).description("V-Pred 模型需要启用 v-parameterization，例如 SD2 768-v、NoobXL V-Pred 或基于 V-Pred 模型微调的模型"),
+                scale_v_pred_loss_like_noise_pred: Schema.boolean().default(false).description("仅用于 V-Pred 模型：像 noise prediction loss 一样缩放 v-prediction loss"),
             }),
             Schema.object({}),
         ]),
@@ -43,6 +47,9 @@ Schema.intersect([
 
     // 学习率&优化器设置
     SHARED_SCHEMAS.LR_OPTIMIZER,
+
+    // 损失设置
+    SHARED_SCHEMAS.LOSS_SETTINGS,
 
     Schema.intersect([
         Schema.object({

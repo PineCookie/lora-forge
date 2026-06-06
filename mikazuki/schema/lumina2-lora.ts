@@ -46,6 +46,9 @@ Schema.intersect([
     // 学习率&优化器设置
     SHARED_SCHEMAS.LR_OPTIMIZER,
 
+    // 损失设置
+    SHARED_SCHEMAS.LOSS_SETTINGS,
+
     Schema.intersect([
         Schema.object({
             network_module: Schema.union(["networks.lora_lumina", "networks.oft_lumina", "lycoris.kohya"]).default("networks.lora_lumina").description("训练网络模块"),

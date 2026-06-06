@@ -27,7 +27,6 @@ const routes = [
   "lora/flux.html",
   "lora/anima.html",
   "lora/sd3.html",
-  "lora/sdxl.html",
   "lora/tools.html",
   "lora/params.html",
   "other/about.html",

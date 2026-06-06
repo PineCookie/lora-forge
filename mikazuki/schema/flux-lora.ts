@@ -14,7 +14,6 @@ Schema.intersect([
         sigmoid_scale: Schema.number().step(0.001).default(1.0).description("sigmoid 缩放"),
         model_prediction_type: Schema.union(["raw", "additive", "sigma_scaled"]).default("raw").description("模型预测类型"),
         discrete_flow_shift: Schema.number().step(0.001).default(1.0).description("Euler 调度器离散流位移"),
-        loss_type: Schema.union(["l1", "l2", "huber", "smooth_l1"]).default("l2").description("损失函数类型"),
         guidance_scale: Schema.number().step(0.01).default(1.0).description("CFG 引导缩放"),
         t5xxl_max_token_length: Schema.number().step(1).description("T5XXL 最大 token 长度（不填写使用自动）"),
         train_t5xxl: Schema.boolean().default(false).description("训练 T5XXL（不推荐）"),
@@ -46,6 +45,9 @@ Schema.intersect([
 
     // 学习率&优化器设置
     SHARED_SCHEMAS.LR_OPTIMIZER,
+
+    // 损失设置
+    SHARED_SCHEMAS.LOSS_SETTINGS,
 
     Schema.intersect([
         Schema.object({

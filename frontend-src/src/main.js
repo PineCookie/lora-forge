@@ -10,11 +10,10 @@ window.__MIKAZUKI__ = {
 const routes = [
   { path: "/", title: "LoRA-Forge", view: "home" },
   { path: "/lora/index.html", alias: "/lora/index.md", title: "LoRA 训练", view: "info", schema: null },
-  { path: "/lora/master.html", alias: "/lora/master.md", title: "SD/SDXL", view: "trainer", schema: "lora-master" },
+  { path: "/lora/master.html", alias: "/lora/master.md", title: "Stable Diffusion", view: "trainer", schema: "lora-master" },
   { path: "/lora/flux.html", alias: "/lora/flux.md", title: "Flux", view: "trainer", schema: "flux-lora" },
   { path: "/lora/anima.html", alias: "/lora/anima.md", title: "Anima", view: "trainer", schema: "anima-lora" },
   { path: "/lora/sd3.html", alias: "/lora/sd3.md", title: "SD3.5", view: "trainer", schema: "sd3-lora" },
-  { path: "/lora/sdxl.html", alias: "/lora/sdxl.md", title: "SDXL", view: "trainer", schema: "lora-master", defaults: { model_train_type: "sdxl-lora" } },
   { path: "/lora/basic.html", alias: "/lora/basic.md", title: "SD1.5", view: "trainer", schema: "lora-basic" },
   { path: "/dreambooth/index.html", alias: "/dreambooth/index.md", title: "Dreambooth", view: "trainer", schema: "dreambooth" },
   { path: "/task.html", alias: "/task.md", title: "任务", view: "tasks" },
@@ -257,11 +256,12 @@ function moveFieldToGroup(groups, fieldName, targetTitle) {
 
 function inferGroupTitle(fields, fallbackTitle = "参数") {
   const names = new Set(fields.map((field) => field.name));
-  if (hasAny(names, ["model_train_type", "pretrained_model_name_or_path", "qwen3", "vae", "clip_l", "clip_g", "t5xxl"])) return "训练用模型";
+  if (hasAny(names, ["model_train_type", "pretrained_model_name_or_path", "qwen3", "vae", "clip_l", "clip_g", "t5xxl", "v2", "v_parameterization", "scale_v_pred_loss_like_noise_pred"])) return "训练用模型";
   if (hasAny(names, ["train_data_dir", "resolution", "enable_bucket", "bucket_no_upscale"])) return "数据集设置";
   if (hasAny(names, ["output_name", "output_dir", "save_model_as", "save_state", "save_last_n_epochs_state"])) return "保存设置";
   if (hasAny(names, ["max_train_epochs", "train_batch_size", "gradient_checkpointing", "seed"])) return "训练相关参数";
   if (hasAny(names, ["optimizer_type", "learning_rate", "lr_scheduler", "lr_scheduler_num_cycles", "unet_lr", "text_encoder_lr", "optimizer_args_custom"])) return "学习率与优化器设置";
+  if (hasAny(names, ["loss_type", "huber_schedule", "huber_c", "min_snr_gamma", "debiased_estimation_loss"])) return "损失设置";
   if (hasAny(names, ["prodigy_d0", "prodigyplus_d_coef"])) return "优化器专用参数";
   if (hasAny(names, ["network_module", "network_dim", "network_alpha", "network_weights"])) return "网络设置";
   if (hasAny(names, ["lycoris_algo", "conv_dim", "conv_alpha", "lokr_factor", "dylora_unit"])) return "网络专用参数";
@@ -466,6 +466,18 @@ function normalizeTrainingConfig(config) {
 
   applyOptimizerRuleToConfig(config);
 
+  if (!["huber", "smooth_l1"].includes(config.loss_type)) {
+    delete config.huber_schedule;
+    delete config.huber_c;
+  }
+
+  if (!["sd-lora", "sdxl-lora", "sd-dreambooth", "sdxl-finetune"].includes(config.model_train_type)) {
+    delete config.v2;
+    delete config.v_parameterization;
+  }
+  if (!["sd-lora", "sd-dreambooth"].includes(config.model_train_type)) delete config.v2;
+  if (!config.v_parameterization) delete config.scale_v_pred_loss_like_noise_pred;
+
   if (config.enable_block_weights) {
     if (config.down_lr_weight !== undefined) config.network_args.push(`down_lr_weight=${config.down_lr_weight}`);
     if (config.mid_lr_weight !== undefined) config.network_args.push(`mid_lr_weight=${config.mid_lr_weight}`);
@@ -576,11 +588,10 @@ function renderShell(route) {
       </a>
       <nav>
         <a href="/lora/index.html">LoRA 训练</a>
-        <a href="/lora/master.html">SD/SDXL</a>
+        <a href="/lora/master.html">Stable Diffusion</a>
         <a href="/lora/flux.html">Flux</a>
         <a href="/lora/anima.html">Anima</a>
         <a href="/lora/sd3.html">SD3.5</a>
-        <a href="/lora/sdxl.html">SDXL</a>
         <a href="/lora/basic.html">SD1.5</a>
         <a href="/dreambooth/index.html">Dreambooth</a>
         <a href="/task.html">任务</a>
@@ -679,6 +690,8 @@ function renderGroup(group, index = 0) {
   const collapsed = state.collapsedSections.has(key);
   const note = group.title === "学习率与优化器设置"
     ? `<p class="section-note">切换优化器时，部分学习率、调度器和 optimizer_args 会按优化器推荐值自动重置。</p>`
+    : group.title === "损失设置"
+      ? `<p class="section-note">Min-SNR 和 Debiased Estimation loss 作用相近，通常不建议同时启用。</p>`
     : "";
   return `
     <section class="panel form-section ${sectionToneClass(group.title)} ${collapsed ? "is-collapsed" : ""}" data-section-key="${escapeAttr(key)}">
@@ -707,7 +720,7 @@ function sectionToneClass(title) {
   if (/模型|Model/i.test(title)) return "section-tone-model";
   if (/数据集|caption|Tag/i.test(title)) return "section-tone-data";
   if (/保存|输出/i.test(title)) return "section-tone-save";
-  if (/学习率|优化器/i.test(title)) return "section-tone-optimize";
+  if (/学习率|优化器|损失/i.test(title)) return "section-tone-optimize";
   if (/网络|基础权重|分层/i.test(title)) return "section-tone-network";
   if (/预览图|日志|Tensorboard|wandb/i.test(title)) return "section-tone-observe";
   if (/噪声|增强|速度|精度|分布式|显卡/i.test(title)) return "section-tone-performance";
@@ -722,8 +735,9 @@ function renderField(name, schema) {
   const description = schema.meta.description ? `<p class="hint">${schema.meta.description}</p>` : "";
   const disabled = schema.meta.disabled ? "disabled" : "";
   const visibleWhen = visibilityRule(name);
+  const visibleValues = visibleWhen ? (Array.isArray(visibleWhen.value) ? visibleWhen.value : [visibleWhen.value]).map(String) : [];
   const visibilityAttrs = visibleWhen
-    ? `data-visible-field="${escapeAttr(visibleWhen.field)}" data-visible-value="${escapeAttr(visibleWhen.value)}" hidden`
+    ? `data-visible-field="${escapeAttr(visibleWhen.field)}" data-visible-value="${escapeAttr(JSON.stringify(visibleValues))}" hidden`
     : "";
 
   let control = "";
@@ -789,10 +803,15 @@ function visibilityRule(name) {
     sample_sampler: ["enable_preview", true],
     sample_every_n_epochs: ["enable_preview", true],
     sample_prompts: ["enable_preview", true],
+    huber_schedule: ["loss_type", ["huber", "smooth_l1"]],
+    huber_c: ["loss_type", ["huber", "smooth_l1"]],
+    v2: ["model_train_type", ["sd-lora", "sd-dreambooth"]],
+    v_parameterization: ["model_train_type", ["sd-lora", "sdxl-lora", "sd-dreambooth", "sdxl-finetune"]],
+    scale_v_pred_loss_like_noise_pred: ["v_parameterization", true],
     wandb_api_key: ["log_with", "wandb"],
   };
   const rule = rules[name];
-  return rule ? { field: rule[0], value: String(rule[1]) } : null;
+  return rule ? { field: rule[0], value: rule[1] } : null;
 }
 
 function bindForm(groups) {
@@ -936,7 +955,8 @@ function updateVisibility() {
       continue;
     }
     const current = controller.type === "checkbox" ? String(controller.checked) : controller.value;
-    const isVisible = current === field.dataset.visibleValue;
+    const visibleValues = JSON.parse(field.dataset.visibleValue);
+    const isVisible = visibleValues.includes(current);
     field.hidden = !isVisible;
     field.classList.toggle("is-hidden", !isVisible);
     field.style.display = isVisible ? "" : "none";

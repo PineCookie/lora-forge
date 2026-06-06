@@ -193,7 +193,7 @@ def validate_model(model_name: str, training_type: str = "sd-lora"):
             return False, "Pretrained model is not Anima, but you are training with Anima LoRA / 校验失败：你选择的是 Anima LoRA 训练，但预训练模型不是 Anima。"
 
         if model_type == ModelType.SDXL and training_type == "sd-lora":
-            return False, "Pretrained model is SDXL, but you are training with SD1.5 LoRA / 校验失败：你选择的是 SD1.5 LoRA 训练，但预训练模型是 SDXL。请前往SD/SDXL模式选择正确的模型种类。"
+            return False, "Pretrained model is SDXL, but you are training with SD1.5 LoRA / 校验失败：你选择的是 SD1.5 LoRA 训练，但预训练模型是 SDXL。请前往 Stable Diffusion 模式选择正确的模型种类。"
 
         return True, "ok"
 

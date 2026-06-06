@@ -31,7 +31,7 @@
                 full_fp16: Schema.boolean().description("完全使用 FP16 精度"),
                 full_bf16: Schema.boolean().description("完全使用 BF16 精度"),
                 no_half_vae: Schema.boolean().description("不使用半精度 VAE"),
-                xformers: Schema.boolean().default(true).description("启用 xformers"),
+                xformers: Schema.boolean().default(false).description("启用 xformers"),
                 sdpa: Schema.boolean().description("启用 sdpa"),
                 lowram: Schema.boolean().default(false).description("低内存模式 该模式下会将 U-net、文本编码器、VAE 直接加载到显存中"),
                 cache_latents: Schema.boolean().default(true).description("缓存图像 latent, 缓存 VAE 输出以减少 VRAM 使用"),
@@ -132,7 +132,6 @@
                     "prodigyplus.ProdigyPlusScheduleFree",
                     "pytorch_optimizer.CAME"
                 ]).default("AdamW8bit").description("优化器设置"),
-                min_snr_gamma: Schema.number().step(0.1).description("最小信噪比伽马值, 如果启用推荐为 5"),
             }),
 
             Schema.object({
@@ -148,7 +147,6 @@
                     "constant_with_warmup",
                 ]).default("cosine_with_restarts").description("学习率调度器设置"),
                 lr_warmup_steps: Schema.number().default(0).description('学习率预热步数'),
-                loss_type: Schema.union(["l1", "l2", "huber", "smooth_l1"]).description("损失函数类型"),
             }).description("学习率与优化器设置"),
 
             Schema.union([
@@ -169,7 +167,7 @@
                     optimizer_type: Schema.const('prodigyplus.ProdigyPlusScheduleFree').required(),
                     prodigyplus_d_coef: Schema.string().default("1.0").description("Prodigy Plus d_coef。官方默认 1.0，可尝试 2 或更高帮助 LR 增长"),
                     prodigyplus_betas: Schema.string().default("(0.95, 0.99)").description("Prodigy Plus betas，需为 Python tuple 格式，例如 (0.95, 0.99)"),
-                    prodigyplus_schedulefree_c: Schema.string().default("10").description("Prodigy Plus schedulefree_c。官方默认 0"),
+                    prodigyplus_schedulefree_c: Schema.string().default("20").description("Prodigy Plus schedulefree_c。官方默认 0"),
                 }),
                 Schema.object({}),
             ]),
@@ -177,6 +175,28 @@
             Schema.object({
                 optimizer_args_custom: Schema.array(String).role('table').description('自定义 optimizer_args，一行一个'),
             })
+        ]),
+
+        LOSS_SETTINGS: Schema.intersect([
+            Schema.object({
+                min_snr_gamma: Schema.number().step(0.1).description("Min-SNR gamma。推荐值 5。与 Debiased Estimation loss 作用相近，不建议同时启用"),
+                debiased_estimation_loss: Schema.boolean().default(false).description("使用 Debiased Estimation loss。与 Min-SNR 作用相近，不建议同时启用"),
+                loss_type: Schema.union(["l1", "l2", "huber", "smooth_l1"]).default("l2").description("损失函数类型"),
+            }).description("损失设置"),
+
+            Schema.union([
+                Schema.object({
+                    loss_type: Schema.const('huber').required(),
+                    huber_schedule: Schema.union(["constant", "exponential", "snr"]).default("snr").description("Huber 损失调度方式，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                    huber_c: Schema.number().step(0.001).default(0.1).description("Huber 损失衰减参数，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                }),
+                Schema.object({
+                    loss_type: Schema.const('smooth_l1').required(),
+                    huber_schedule: Schema.union(["constant", "exponential", "snr"]).default("snr").description("Huber 损失调度方式，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                    huber_c: Schema.number().step(0.001).default(0.1).description("Huber 损失衰减参数，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                }),
+                Schema.object({}),
+            ]),
         ]),
 
         FULL_PRECISION_MODE: Schema.object({
@@ -212,7 +232,7 @@
                 log_with: Schema.union(["tensorboard", "wandb"]).default("tensorboard").description("日志模块"),
                 log_prefix: Schema.string().description("日志前缀"),
                 log_tracker_name: Schema.string().description("日志追踪器名称"),
-                logging_dir: Schema.string().default("./logs").description("日志保存文件夹"),
+                logging_dir: Schema.string().role('filepicker', { type: "folder" }).default("./logs").description("日志保存文件夹"),
             }).description('日志设置'),
 
             Schema.union([

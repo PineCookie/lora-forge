@@ -17,10 +17,14 @@ Schema.intersect([
 
         Schema.union([
             Schema.object({
-                model_train_type: Schema.const("sd-dreambooth"),
-                v2: Schema.const(true).required(),
-                v_parameterization: Schema.boolean().default(false).description("v-parameterization 学习"),
-                scale_v_pred_loss_like_noise_pred: Schema.boolean().default(false).description("缩放 v-prediction 损失（与v-parameterization配合使用）"),
+                model_train_type: Schema.const("sd-dreambooth").required(),
+                v_parameterization: Schema.boolean().default(false).description("V-Pred 模型需要启用 v-parameterization，例如 SD2 768-v、NoobXL V-Pred 或基于 V-Pred 模型微调的模型"),
+                scale_v_pred_loss_like_noise_pred: Schema.boolean().default(false).description("仅用于 V-Pred 模型：像 noise prediction loss 一样缩放 v-prediction loss"),
+            }),
+            Schema.object({
+                model_train_type: Schema.const("sdxl-finetune").required(),
+                v_parameterization: Schema.boolean().default(false).description("V-Pred 模型需要启用 v-parameterization，例如 SD2 768-v、NoobXL V-Pred 或基于 V-Pred 模型微调的模型"),
+                scale_v_pred_loss_like_noise_pred: Schema.boolean().default(false).description("仅用于 V-Pred 模型：像 noise prediction loss 一样缩放 v-prediction loss"),
             }),
             Schema.object({}),
         ]),
@@ -76,7 +80,6 @@ Schema.intersect([
                 "Prodigy",
                 "prodigyplus.ProdigyPlusScheduleFree"
             ]).default("AdamW8bit").description("优化器设置"),
-            min_snr_gamma: Schema.number().step(0.1).description("最小信噪比伽马值，如果启用推荐为 5"),
         }),
 
         Schema.object({
@@ -111,6 +114,26 @@ Schema.intersect([
             ]).default("cosine_with_restarts").description("学习率调度器设置"),
             lr_warmup_steps: Schema.number().default(0).description("学习率预热步数"),
         }),
+
+        Schema.object({
+            min_snr_gamma: Schema.number().step(0.1).description("Min-SNR gamma。推荐值 5。与 Debiased Estimation loss 作用相近，不建议同时启用"),
+            debiased_estimation_loss: Schema.boolean().default(false).description("使用 Debiased Estimation loss。与 Min-SNR 作用相近，不建议同时启用"),
+            loss_type: Schema.union(["l1", "l2", "huber", "smooth_l1"]).default("l2").description("损失函数类型"),
+        }).description("损失设置"),
+
+        Schema.union([
+            Schema.object({
+                loss_type: Schema.const("huber").required(),
+                huber_schedule: Schema.union(["constant", "exponential", "snr"]).default("snr").description("Huber 损失调度方式，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                huber_c: Schema.number().step(0.001).default(0.1).description("Huber 损失衰减参数，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+            }),
+            Schema.object({
+                loss_type: Schema.const("smooth_l1").required(),
+                huber_schedule: Schema.union(["constant", "exponential", "snr"]).default("snr").description("Huber 损失调度方式，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+                huber_c: Schema.number().step(0.001).default(0.1).description("Huber 损失衰减参数，仅在 loss_type 为 huber 或 smooth_l1 时生效"),
+            }),
+            Schema.object({}),
+        ]),
 
         Schema.union([
             Schema.object({
@@ -161,7 +184,7 @@ Schema.intersect([
             log_with: Schema.union(["tensorboard", "wandb"]).default("tensorboard").description("日志模块"),
             log_prefix: Schema.string().description("日志前缀"),
             log_tracker_name: Schema.string().description("日志追踪器名称"),
-            logging_dir: Schema.string().default("./logs").description("日志保存文件夹"),
+            logging_dir: Schema.string().role("filepicker", { type: "folder" }).default("./logs").description("日志保存文件夹"),
         }).description("日志设置"),
 
         Schema.union([
@@ -203,7 +226,7 @@ Schema.intersect([
 
     Schema.object({
         mixed_precision: Schema.union(["no", "fp16", "bf16"]).default("fp16").description("训练混合精度"),
-        xformers: Schema.boolean().default(true).description("启用 xformers"),
+        xformers: Schema.boolean().default(false).description("启用 xformers"),
         sdpa: Schema.boolean().description("启用 sdpa"),
         lowram: Schema.boolean().default(false).description("低内存模式 该模式下会将 U-net、文本编码器、VAE 直接加载到显存中"),
         cache_latents: Schema.boolean().default(true).description("缓存图像 latent"),
