@@ -688,11 +688,7 @@ function renderTrainer(route) {
 function renderGroup(group, index = 0) {
   const key = sectionCollapseKey(group.title, index);
   const collapsed = state.collapsedSections.has(key);
-  const note = group.title === "学习率与优化器设置"
-    ? `<p class="section-note">切换优化器时，部分学习率、调度器和 optimizer_args 会按优化器推荐值自动重置。</p>`
-    : group.title === "损失设置"
-      ? `<p class="section-note">Min-SNR 和 Debiased Estimation loss 作用相近，通常不建议同时启用。</p>`
-    : "";
+  const note = groupNote(group);
   return `
     <section class="panel form-section ${sectionToneClass(group.title)} ${collapsed ? "is-collapsed" : ""}" data-section-key="${escapeAttr(key)}">
       <button
@@ -710,6 +706,23 @@ function renderGroup(group, index = 0) {
       </div>
     </section>
   `;
+}
+
+function groupNote(group) {
+  if (group.title === "学习率与优化器设置") {
+    return `<p class="section-note">切换优化器时，部分学习率、调度器和 optimizer_args 会按优化器推荐值自动重置。</p>`;
+  }
+
+  if (group.title !== "损失设置") return "";
+
+  const fieldNames = new Set(group.fields.map((field) => field.name));
+  if (state.currentRoute?.schema === "anima-lora") {
+    return `<p class="section-note">Anima 使用 FlowMatch 调度器：Huber schedule 的 snr 当前不支持；exponential 在网络训练路径可能可运行，但时间步缩放会让效果接近常数，通常建议使用 constant。</p>`;
+  }
+  if (fieldNames.has("min_snr_gamma") && fieldNames.has("debiased_estimation_loss")) {
+    return `<p class="section-note">Min-SNR 和 Debiased Estimation loss 作用相近，通常不建议同时启用。</p>`;
+  }
+  return "";
 }
 
 function sectionCollapseKey(title, index) {
