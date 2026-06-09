@@ -337,6 +337,12 @@ function withFrontendOptimizerFields(groups) {
       schema: Schema.string().default("0").description("Prodigy Plus schedulefree_c。官方默认 0"),
     });
   }
+  if (!allNames.has("prodigyplus_prodigy_steps")) {
+    fields.push({
+      name: "prodigyplus_prodigy_steps",
+      schema: Schema.string().default("0").description("Prodigy Plus prodigy_steps。官方默认 0；旧版本可设为总步数的 5-25%"),
+    });
+  }
 
   if (!fields.length) return groups;
   return [...groups, { title: "优化器专用参数", fields }];
@@ -558,6 +564,7 @@ function normalizeTrainingConfig(config) {
     "prodigyplus_d_coef",
     "prodigyplus_betas",
     "prodigyplus_schedulefree_c",
+    "prodigyplus_prodigy_steps",
     "ui_custom_params",
   ]) delete config[key];
 
@@ -791,6 +798,7 @@ function visibilityRule(name) {
     prodigyplus_d_coef: ["optimizer_type", "prodigyplus.ProdigyPlusScheduleFree"],
     prodigyplus_betas: ["optimizer_type", "prodigyplus.ProdigyPlusScheduleFree"],
     prodigyplus_schedulefree_c: ["optimizer_type", "prodigyplus.ProdigyPlusScheduleFree"],
+    prodigyplus_prodigy_steps: ["optimizer_type", "prodigyplus.ProdigyPlusScheduleFree"],
     lycoris_algo: ["network_module", "lycoris.kohya"],
     conv_dim: ["network_module", "lycoris.kohya"],
     conv_alpha: ["network_module", "lycoris.kohya"],
@@ -1016,6 +1024,7 @@ const optimizerRules = [
       config.prodigyplus_d_coef !== undefined ? `d_coef=${config.prodigyplus_d_coef}` : null,
       config.prodigyplus_betas ? `betas=${config.prodigyplus_betas}` : null,
       config.prodigyplus_schedulefree_c !== undefined ? `schedulefree_c=${config.prodigyplus_schedulefree_c}` : null,
+      config.prodigyplus_prodigy_steps !== undefined ? `prodigy_steps=${config.prodigyplus_prodigy_steps}` : null,
     ],
   },
 ];

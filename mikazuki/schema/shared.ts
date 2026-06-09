@@ -168,6 +168,7 @@
                     prodigyplus_d_coef: Schema.string().default("1.0").description("Prodigy Plus d_coef。官方默认 1.0，可尝试 2 或更高帮助 LR 增长"),
                     prodigyplus_betas: Schema.string().default("(0.95, 0.99)").description("Prodigy Plus betas，需为 Python tuple 格式，例如 (0.95, 0.99)"),
                     prodigyplus_schedulefree_c: Schema.string().default("20").description("Prodigy Plus schedulefree_c。官方默认 0"),
+                    prodigyplus_prodigy_steps: Schema.string().default("0").description("Prodigy Plus prodigy_steps。官方默认 0；旧版本可设为总步数的 5-25%"),
                 }),
                 Schema.object({}),
             ]),
