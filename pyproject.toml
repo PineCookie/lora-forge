@@ -8,8 +8,8 @@ dependencies = [
     # Torch
     "torch>=2.9.0",
     "torchvision",
-    "triton<3.7; sys_platform != 'win32'",
-    "triton-windows<3.7; sys_platform == 'win32'",
+    "triton<3.8; sys_platform != 'win32'",
+    "triton-windows<3.8; sys_platform == 'win32'",
     "xformers>=0.0.35",
     # Training core
     "accelerate>=1.6.0",
