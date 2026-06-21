@@ -153,7 +153,7 @@ async function loadRuntime() {
     state.runtime = await api("/api/runtime");
   } catch (error) {
     console.warn("Failed to load runtime information", error);
-    state.runtime = { services: {} };
+    state.runtime = { services: {}, versions: {} };
   }
 }
 
@@ -681,8 +681,12 @@ function renderTrainer(route) {
           <div id="generated-args" class="args-preview"></div>
         </section>
         <section class="config-preview">
-          <h2>TOML 配置预览</h2>
+          <h2>TOML 配置预览 <button type="button" id="copy-toml" class="icon-button" title="复制到剪贴板" style="margin-left:auto;font-size:11px;padding:2px 8px;">复制</button></h2>
           <pre id="preview"></pre>
+        </section>
+        <section class="system-info">
+          <h2>系统信息</h2>
+          <div id="version-info" class="version-info"></div>
         </section>
       </aside>
     </form>
@@ -690,6 +694,7 @@ function renderTrainer(route) {
 
   bindForm(groups);
   updatePreview(groups);
+  renderVersionInfo();
 }
 
 function renderGroup(group, index = 0) {
@@ -873,6 +878,8 @@ function bindForm(groups) {
   document.querySelector("#stop-training").addEventListener("click", stopTraining);
   document.querySelector("#export-config").addEventListener("click", () => downloadJson(readForm(groups)));
   document.querySelector("#export-toml").addEventListener("click", () => downloadToml(readForm(groups)));
+  const copyBtn = document.querySelector("#copy-toml");
+  if (copyBtn) copyBtn.addEventListener("click", copyTomlToClipboard);
   document.querySelector("#import-config").addEventListener("change", importConfig);
   document.querySelector("#import-toml").addEventListener("change", importToml);
   bindSectionCollapse(form);
@@ -913,6 +920,25 @@ function bindSectionCollapse(form) {
     const icon = button.querySelector(".section-toggle-icon");
     if (icon) icon.textContent = collapsed ? "+" : "-";
   });
+}
+
+function renderVersionInfo() {
+  const el = document.querySelector("#version-info");
+  if (!el) return;
+  const v = state.runtime?.versions;
+  if (!v || !Object.keys(v).length) {
+    el.textContent = "加载中...";
+    return;
+  }
+  const items = [
+    ["sd-scripts", v.sd_scripts || "unknown"],
+    ["PyTorch", v.pytorch || "unknown"],
+    ["Triton", v.triton || "unknown"],
+    ["CUDA", v.cuda || "unknown"],
+  ];
+  el.innerHTML = items
+    .map(([label, value]) => `<div class="version-row"><span class="version-label">${label}</span><span class="version-value">${escapeHtml(value)}</span></div>`)
+    .join("");
 }
 
 function captureInitialFieldValues(groups) {
@@ -1174,10 +1200,83 @@ function expandImportedNetworkArgs(config) {
   return result;
 }
 
+const TOML_KEY_ORDER = [
+  { section: "模型", keys: ["pretrained_model_name_or_path", "qwen3", "vae", "llm_adapter_path", "t5_tokenizer_path", "resume"] },
+  { section: "数据集", keys: ["train_data_dir", "reg_data_dir", "prior_loss_weight", "resolution", "enable_bucket", "min_bucket_reso", "max_bucket_reso", "bucket_reso_steps", "bucket_no_upscale", "cache_latents", "cache_latents_to_disk", "caption_extension", "shuffle_caption", "keep_tokens", "keep_tokens_separator", "max_token_length", "caption_dropout_rate", "caption_dropout_every_n_epochs", "caption_tag_dropout_rate", "weighted_captions", "persistent_data_loader_workers"] },
+  { section: "网络", keys: ["network_module", "network_weights", "network_dim", "network_alpha", "network_dropout", "scale_weight_norms", "enable_base_weight", "base_weights", "base_weights_multiplier", "network_train_unet_only", "network_train_text_encoder_only"] },
+  { section: "训练", keys: ["train_batch_size", "max_train_epochs", "gradient_checkpointing", "gradient_accumulation_steps", "learning_rate", "unet_lr", "text_encoder_lr", "optimizer_type", "lr_scheduler", "lr_warmup_steps", "lr_restart_cycles", "lr_scheduler_num_cycles", "loss_type", "optimizer_args"] },
+  { section: "Anima 专用", keys: ["timestep_sampling", "weighting_scheme", "sigmoid_scale", "discrete_flow_shift", "logit_mean", "logit_std", "mode_scale", "qwen3_max_token_length", "t5_max_token_length", "llm_adapter_lr", "self_attn_lr", "cross_attn_lr", "mlp_lr", "mod_lr"] },
+  { section: "精度与速度", keys: ["mixed_precision", "full_precision", "xformers", "sdpa", "cache_text_encoder_outputs", "cache_text_encoder_outputs_to_disk", "attn_mode", "split_attn", "blocks_to_swap", "cpu_offload_checkpointing", "unsloth_offload_checkpointing", "vae_chunk_size", "vae_disable_cache", "qwen_image_vae_2d", "text_encoder_batch_size", "vae_batch_size"] },
+  { section: "torch.compile", keys: ["compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit", "cuda_allow_tf32", "cuda_cudnn_benchmark"] },
+  { section: "保存", keys: ["output_name", "output_dir", "save_model_as", "save_precision", "save_every_n_epochs", "save_state", "save_last_n_epochs", "save_n_epoch_ratio", "log_with", "logging_dir"] },
+  { section: "预览图", keys: ["enable_preview", "positive_prompts", "negative_prompts", "sample_width", "sample_height", "sample_cfg", "sample_seed", "sample_steps", "sample_sampler", "sample_every_n_epochs", "randomly_choice_prompt", "prompt_file"] },
+  { section: "数据增强", keys: ["color_aug", "flip_aug", "random_crop", "noise_offset", "min_snr_gamma", "ip_noise_gamma", "multires_noise_iterations", "multires_noise_discount"] },
+  { section: "其他", keys: ["seed", "network_args", "ui_custom_params"] },
+];
+
+function buildTomlKeyMap() {
+  const map = new Map();
+  let order = 0;
+  for (const { section, keys } of TOML_KEY_ORDER) {
+    for (const key of keys) {
+      map.set(key, { section, order: order++ });
+    }
+  }
+  return map;
+}
+
 function toToml(config) {
-  return `${Object.entries(config)
-    .map(([key, value]) => `${key} = ${tomlValue(value)}`)
-    .join("\n")}\n`;
+  const keyMap = buildTomlKeyMap();
+  const entries = Object.entries(config);
+
+  // Separate known and unknown keys
+  const known = entries.filter(([k]) => keyMap.has(k));
+  const unknown = entries.filter(([k]) => !keyMap.has(k));
+
+  // Sort known keys by section order
+  known.sort(([a], [b]) => (keyMap.get(a)?.order ?? 999) - (keyMap.get(b)?.order ?? 999));
+
+  const lines = [];
+  let currentSection = null;
+
+  for (const [key, value] of known) {
+    const info = keyMap.get(key);
+    if (info && info.section !== currentSection) {
+      currentSection = info.section;
+      lines.push(`# --- ${currentSection} ---`);
+    }
+    lines.push(`${key} = ${tomlValue(value)}`);
+  }
+
+  if (unknown.length) {
+    lines.push(`# --- 其他 ---`);
+    for (const [key, value] of unknown) {
+      lines.push(`${key} = ${tomlValue(value)}`);
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function copyTomlToClipboard() {
+  const preview = document.querySelector("#preview");
+  if (!preview?.textContent) return;
+  navigator.clipboard.writeText(preview.textContent).then(() => {
+    const btn = document.querySelector("#copy-toml");
+    const orig = btn.textContent;
+    btn.textContent = "已复制!";
+    setTimeout(() => (btn.textContent = orig), 1500);
+  }).catch(() => {
+    // Fallback for older browsers
+    const ta = document.createElement("textarea");
+    ta.value = preview.textContent;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+  });
 }
 
 function tomlValue(value) {

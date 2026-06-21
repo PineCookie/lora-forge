@@ -135,7 +135,7 @@ source .venv/bin/activate
 | `--listen`                   | bool  | false        | 启用服务器的监听模式                            |
 | `--skip-prepare-onnxruntime` | bool  | false        | 跳过 ONNX Runtime 准备                          |
 | `--skip-prepare-sd-scripts`  | bool  | false        | 跳过克隆 kohya-ss/sd-scripts                    |
-| `--sd-scripts-branch`        | str   | "sd3"        | 克隆 kohya-ss/sd-scripts 时使用的分支           |
+| `--sd-scripts-branch`        | str   | "main"        | 克隆 kohya-ss/sd-scripts 时使用的分支或标签           |
 | `--enable-tensorboard`       | bool  | false        | 启用 TensorBoard                                |
 | `--enable-tageditor`         | bool  | false        | 启用标签编辑器                                  |
 | `--tensorboard-host`         | str   | "127.0.0.1"  | 运行 TensorBoard 的主机                         |

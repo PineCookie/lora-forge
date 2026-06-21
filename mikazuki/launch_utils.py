@@ -67,10 +67,91 @@ def prepare_submodules():
         subprocess.run(["git", "submodule", "update"])
 
 
-def prepare_sd_scripts(branch: str = "sd3"):
+def prepare_sd_scripts(ref: str = "main"):
+    """Clone or update kohya-ss/sd-scripts at the given branch or tag.
+
+    Args:
+        ref: A branch name (e.g. "sd3", "main") or tag (e.g. "v0.11.1").
+    """
     sd_scripts_path = base_dir_path() / "scripts" / "sd-scripts"
 
     if (sd_scripts_path / ".git").exists():
+        # Already cloned — fetch latest and switch to the target ref
+        if not prepare_git():
+            log.error("git not found, please install git first")
+            sys.exit(1)
+
+        # Fetch all to get latest branches and tags
+        log.info("Fetching latest sd-scripts...")
+        subprocess.run(
+            ["git", "-C", str(sd_scripts_path), "fetch", "--all", "--tags", "--prune"],
+            capture_output=True
+        )
+
+        # Check if ref is a tag
+        tag_check = subprocess.run(
+            ["git", "-C", str(sd_scripts_path), "rev-parse", "--verify", f"refs/tags/{ref}"],
+            capture_output=True
+        )
+        is_tag = tag_check.returncode == 0
+
+        # Determine current HEAD
+        try:
+            current = subprocess.run(
+                ["git", "-C", str(sd_scripts_path), "rev-parse", "HEAD"],
+                capture_output=True, text=True, check=True
+            ).stdout.strip()
+        except subprocess.CalledProcessError:
+            current = "unknown"
+
+        target = subprocess.run(
+            ["git", "-C", str(sd_scripts_path), "rev-parse", "--verify", ref],
+            capture_output=True
+        )
+
+        if target.returncode != 0:
+            # Ref not found locally yet — try fetching it explicitly
+            log.info(f"Ref '{ref}' not found locally, fetching from origin...")
+            subprocess.run(
+                ["git", "-C", str(sd_scripts_path), "fetch", "origin", f"{ref}:refs/remotes/origin/{ref}"],
+                capture_output=True
+            )
+            target = subprocess.run(
+                ["git", "-C", str(sd_scripts_path), "rev-parse", "--verify", f"origin/{ref}"],
+                capture_output=True, text=True
+            )
+            if target.returncode != 0:
+                log.error(f"Ref '{ref}' does not exist on remote either")
+                return
+            target_commit = target.stdout.strip()
+        else:
+            target_commit = target.stdout.strip()
+
+        if current == target_commit:
+            # Already on the right ref — pull if it's a branch
+            if not is_tag:
+                log.info(f"Already on '{ref}', pulling latest...")
+                subprocess.run(
+                    ["git", "-C", str(sd_scripts_path), "pull", "--ff-only", "origin", ref],
+                    capture_output=True
+                )
+            else:
+                log.info(f"Already at tag '{ref}', nothing to do")
+            return
+
+        log.info(f"Switching sd-scripts to '{ref}'...")
+        if is_tag:
+            # Tags: checkout directly (detached HEAD is fine)
+            subprocess.run(
+                ["git", "-C", str(sd_scripts_path), "checkout", f"refs/tags/{ref}"],
+                check=True
+            )
+        else:
+            # Branches: create/update local branch from remote
+            subprocess.run(
+                ["git", "-C", str(sd_scripts_path), "checkout", "-B", ref, f"origin/{ref}"],
+                check=True
+            )
         return
 
     if sd_scripts_path.exists() and any(sd_scripts_path.iterdir()):
@@ -82,19 +163,29 @@ def prepare_sd_scripts(branch: str = "sd3"):
         sys.exit(1)
 
     sd_scripts_path.parent.mkdir(parents=True, exist_ok=True)
-    log.info(f"Cloning kohya-ss/sd-scripts branch {branch} to {sd_scripts_path}...")
+    log.info(f"Cloning kohya-ss/sd-scripts ({ref}) to {sd_scripts_path}...")
     result = subprocess.run([
         "git",
         "clone",
-        "--depth",
-        "1",
         "--branch",
-        branch,
+        ref,
         "https://github.com/kohya-ss/sd-scripts.git",
         str(sd_scripts_path),
     ])
     if result.returncode != 0:
-        raise RuntimeError(f"Failed to clone kohya-ss/sd-scripts branch {branch}")
+        # Fallback: clone then checkout the ref (handles tags that aren't branches)
+        log.info("Branch clone failed, trying full clone + checkout...")
+        result = subprocess.run([
+            "git", "clone",
+            "https://github.com/kohya-ss/sd-scripts.git",
+            str(sd_scripts_path),
+        ])
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to clone kohya-ss/sd-scripts")
+        subprocess.run(
+            ["git", "-C", str(sd_scripts_path), "checkout", ref],
+            check=True
+        )
 
 
 def git_tag(path: str) -> str:

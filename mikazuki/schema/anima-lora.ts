@@ -25,11 +25,11 @@ Schema.intersect([
 
     Schema.object(
         UpdateSchema(SHARED_SCHEMAS.RAW.DATASET_SETTINGS, {
-            resolution: Schema.string().default("1024,1024").description("训练图片分辨率，宽x高。Anima 支持 512x512 到 1536x1536，必须是 64 倍数。"),
+            resolution: Schema.string().default("1024,1024").description("训练图片分辨率，宽x高。Anima 支持 512x512 到 1536x1536，必须是 16 倍数。"),
             enable_bucket: Schema.boolean().default(true).description("启用 arb 桶以允许非固定宽高比的图片"),
             min_bucket_reso: Schema.number().default(512).description("arb 桶最小分辨率"),
             max_bucket_reso: Schema.number().default(2048).description("arb 桶最大边长。Anima 方图建议不超过 1536；如需 2:1 等宽屏图，可提高到 2048 或更高，但显存占用按总像素增长"),
-            bucket_reso_steps: Schema.number().default(64).description("arb 桶分辨率划分单位"),
+            bucket_reso_steps: Schema.number().default(16).description("arb 桶分辨率划分单位。Anima 推荐 16"),
         })
     ).description("数据集设置"),
 
@@ -127,9 +127,22 @@ Schema.intersect([
             unsloth_offload_checkpointing: Schema.boolean().default(false).description("使用异步 CPU RAM offload 激活值。不能与 cpu_offload_checkpointing 或 blocks_to_swap 同时使用"),
             vae_chunk_size: Schema.number().min(2).step(2).description("VAE 编解码空间分块大小，必须为偶数。不填写则不分块"),
             vae_disable_cache: Schema.boolean().default(false).description("禁用 VAE 内部缓存以降低显存"),
+            qwen_image_vae_2d: Schema.boolean().default(false).description("使用仅图像 2D Qwen-Image VAE（将 Conv3d 权重转为 Conv2d）。官方 Anima VAE 权重可用此选项。⚠ 需 sd-scripts v0.11.1+"),
             text_encoder_batch_size: Schema.number().min(1).description("缓存文本编码器输出时的批量大小，不填写则使用数据集 batch size"),
         }, ["fp8_base", "fp8_base_unet", "no_half_vae", "lowram", "full_fp16", "full_bf16"])
     ).description("速度优化选项"),
+
+    // torch.compile 优化（Anima per-block compile，v0.11.1+）
+    Schema.object({
+        compile: Schema.boolean().default(false).description("启用 per-block torch.compile，显著加速 Anima 训练（需 Triton）。与旧版 --torch_compile 互斥"),
+        compile_backend: Schema.union(["inductor", "eager", "aot_eager"]).default("inductor").description("torch.compile 后端"),
+        compile_mode: Schema.union(["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]).default("default").description("编译模式。max-autotune 最快但首次编译慢"),
+        compile_dynamic: Schema.union(["auto", "true", "false"]).default("auto").description("动态形状模式。Windows 上选 true 需要 VS 2022 C++ 编译器"),
+        compile_fullgraph: Schema.boolean().default(false).description("全图编译模式。不能与 split_attn 同时使用"),
+        compile_cache_size_limit: Schema.number().min(1).default(32).description("torch._dynamo 缓存大小限制，推荐 32"),
+        cuda_allow_tf32: Schema.boolean().default(false).description("允许 TF32 精度（Ampere+ GPU），可提升性能"),
+        cuda_cudnn_benchmark: Schema.boolean().default(false).description("启用 cuDNN benchmark 模式，可能提升性能"),
+    }).description("torch.compile 优化（⚠ 需 sd-scripts v0.11.1+）"),
 
     // 分布式训练
     SHARED_SCHEMAS.DISTRIBUTED_TRAINING

@@ -335,11 +335,43 @@ async def list_avaliable_cards() -> APIResponse:
 
 @router.get("/runtime")
 async def get_runtime() -> APIResponse:
+    versions = {}
+    # sd-scripts version
+    try:
+        versions["sd_scripts"] = launch_utils.git_tag(str(launch_utils.base_dir_path() / "scripts" / "sd-scripts"))
+    except Exception:
+        versions["sd_scripts"] = "unknown"
+
+    # PyTorch version
+    try:
+        import torch
+        versions["pytorch"] = torch.__version__
+    except Exception:
+        versions["pytorch"] = "unknown"
+
+    # Triton version
+    try:
+        import triton
+        versions["triton"] = getattr(triton, "__version__", "installed")
+    except Exception:
+        versions["triton"] = "not installed"
+
+    # CUDA version
+    try:
+        import torch
+        if torch.cuda.is_available():
+            versions["cuda"] = torch.version.cuda or "unknown"
+        else:
+            versions["cuda"] = "not available"
+    except Exception:
+        versions["cuda"] = "unknown"
+
     return APIResponseSuccess(data={
         "services": {
             "tensorboard": os.environ.get("MIKAZUKI_ENABLE_TENSORBOARD", "0") == "1",
             "tageditor": os.environ.get("MIKAZUKI_ENABLE_TAGEDITOR", "0") == "1",
-        }
+        },
+        "versions": versions,
     })
 
 

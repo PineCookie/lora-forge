@@ -151,7 +151,7 @@ textarea {
 
 #status {
   color: #2442a3;
-  font-size: 14px;
+  font-size: 13px;
   text-align: right;
 }
 
@@ -536,14 +536,12 @@ textarea {
 }
 
 .actions {
-  align-self: start;
   display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
   gap: 12px;
-  max-height: 100%;
   min-height: 0;
   min-width: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: visible;
   padding-right: 4px;
 }
 
@@ -577,6 +575,9 @@ textarea {
   margin: 0;
   color: #344054;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .action-group h2 {
@@ -697,17 +698,66 @@ button.danger:hover {
 .config-preview {
   --preview-accent: var(--tone-general);
   --preview-soft: var(--tone-general-soft);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-#preview,
-.args-preview {
+.system-info {
+  --preview-accent: var(--tone-model);
+  --preview-soft: var(--tone-model-soft);
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--preview-accent);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--preview-soft) 0, var(--surface) 44px);
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.system-info h2 {
+  margin: 0 0 6px;
+  color: #344054;
+  font-size: 13px;
+}
+
+.version-info {
+  display: grid;
+  gap: 3px;
+}
+
+.version-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.version-label {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.version-value {
+  color: var(--text);
+  font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", Menlo, Monaco, monospace;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#preview {
   margin: 0;
   margin-top: 8px;
   padding: 12px;
   max-width: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  max-height: 58vh;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
   border-radius: 6px;
   background: #101828;
   color: #d7e0ff;
@@ -722,6 +772,21 @@ button.danger:hover {
   display: grid;
   gap: 10px;
   min-height: 42px;
+  margin: 0;
+  margin-top: 8px;
+  padding: 12px;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 20vh;
+  border-radius: 6px;
+  background: #101828;
+  color: #d7e0ff;
+  font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", Menlo, Monaco, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .args-section {

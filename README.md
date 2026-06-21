@@ -136,7 +136,7 @@ Run `tensorboard.ps1` to start TensorBoard at http://localhost:6006/
 | `--listen`                    | bool  | false         | Enable listening mode for the server             |
 | `--skip-prepare-onnxruntime`  | bool  | false         | Skip preparing ONNX Runtime                      |
 | `--skip-prepare-sd-scripts`   | bool  | false         | Skip cloning kohya-ss/sd-scripts                |
-| `--sd-scripts-branch`         | str   | "sd3"         | Branch to clone from kohya-ss/sd-scripts        |
+| `--sd-scripts-branch`         | str   | "main"        | Branch or tag to clone from kohya-ss/sd-scripts        |
 | `--enable-tensorboard`        | bool  | false         | Enable TensorBoard                               |
 | `--enable-tageditor`          | bool  | false         | Enable tag editor                                |
 | `--tensorboard-host`          | str   | "127.0.0.1"   | Host to run TensorBoard                          |
