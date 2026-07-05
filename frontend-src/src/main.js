@@ -694,6 +694,7 @@ function renderTrainer(route) {
 
   bindForm(groups);
   updatePreview(groups);
+  updateDatasetStats();
   renderVersionInfo();
 }
 
@@ -701,6 +702,7 @@ function renderGroup(group, index = 0) {
   const key = sectionCollapseKey(group.title, index);
   const collapsed = state.collapsedSections.has(key);
   const note = groupNote(group);
+  const afterFields = group.title === "数据集设置" ? '<div class="dataset-stats" data-dataset-stats></div>' : "";
   return `
     <section class="panel form-section ${sectionToneClass(group.title)} ${collapsed ? "is-collapsed" : ""}" data-section-key="${escapeAttr(key)}">
       <button
@@ -715,6 +717,7 @@ function renderGroup(group, index = 0) {
       <div class="section-body">
         ${note}
         ${group.fields.map((field) => renderField(field.name, field.schema)).join("")}
+        ${afterFields}
       </div>
     </section>
   `;
@@ -742,6 +745,7 @@ function sectionCollapseKey(title, index) {
 }
 
 function sectionToneClass(title) {
+  if (/快速配置/i.test(title)) return "section-tone-quick";
   if (/模型|Model/i.test(title)) return "section-tone-model";
   if (/数据集|caption|Tag/i.test(title)) return "section-tone-data";
   if (/保存|输出/i.test(title)) return "section-tone-save";
@@ -847,12 +851,14 @@ function bindForm(groups) {
     applyDependentValues();
     updateVisibility();
     updatePreview(groups);
+    updateDatasetStats();
   });
   form.addEventListener("change", (event) => {
     updateEditedField(event.target);
     applyDependentValues();
     updateVisibility();
     updatePreview(groups);
+    updateDatasetStats();
   });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -992,6 +998,90 @@ function updatePreview(groups) {
   const config = readForm(groups);
   document.querySelector("#generated-args").innerHTML = renderGeneratedArgs(config);
   document.querySelector("#preview").textContent = toToml(config);
+}
+
+let datasetInfoCache = null;
+let datasetInfoDebounce = null;
+
+async function updateDatasetStats() {
+  const el = document.querySelector("[data-dataset-stats]");
+  if (!el) return;
+
+  const dirInput = document.querySelector('[name="train_data_dir"]');
+  const dir = dirInput?.value?.trim();
+  if (!dir) {
+    el.innerHTML = "";
+    datasetInfoCache = null;
+    return;
+  }
+
+  const batchInput = document.querySelector('[name="train_batch_size"]');
+  const gradAccInput = document.querySelector('[name="gradient_accumulation_steps"]');
+  const epochsInput = document.querySelector('[name="max_train_epochs"]');
+  const batchSize = parseInt(batchInput?.value, 10) || 1;
+  const gradAcc = parseInt(gradAccInput?.value, 10) || 1;
+  const epochs = parseInt(epochsInput?.value, 10) || 1;
+
+  if (!datasetInfoCache || datasetInfoCache.dir !== dir) {
+    el.innerHTML = '<span class="dataset-stats-loading">正在计算数据集信息...</span>';
+    clearTimeout(datasetInfoDebounce);
+    datasetInfoDebounce = setTimeout(async () => {
+      try {
+        const result = await api(`/api/dataset_info?train_data_dir=${encodeURIComponent(dir)}`);
+        datasetInfoCache = { dir, data: result };
+        renderDatasetStats(el, result, batchSize, gradAcc, epochs);
+      } catch (err) {
+        el.innerHTML = `<span class="dataset-stats-error">无法读取数据集: ${escapeHtml(err.message)}</span>`;
+        datasetInfoCache = null;
+      }
+    }, 400);
+    return;
+  }
+
+  renderDatasetStats(el, datasetInfoCache.data, batchSize, gradAcc, epochs);
+}
+
+function renderDatasetStats(el, info, batchSize, gradAcc, epochs) {
+  const { subdirs, total_images_with_repeats, total_images } = info;
+  const effectiveBatch = batchSize * gradAcc;
+  const stepsPerEpoch = effectiveBatch > 0 ? Math.ceil(total_images_with_repeats / effectiveBatch) : 0;
+  const totalSteps = stepsPerEpoch * epochs;
+
+  let html = '<div class="dataset-stats-panel">';
+  html += '<div class="dataset-stats-title">📊 步数预测</div>';
+
+  if (subdirs && subdirs.length > 0) {
+    html += '<table class="dataset-stats-table"><thead><tr><th>子文件夹</th><th>重复次数</th><th>图片数</th><th>有效图片数</th></tr></thead><tbody>';
+    for (const s of subdirs) {
+      html += `<tr><td>${escapeHtml(s.concept || s.name)}</td><td>×${s.repeat}</td><td>${s.image_count}</td><td>${s.image_count * s.repeat}</td></tr>`;
+    }
+    html += '</tbody></table>';
+  } else {
+    html += `<p class="dataset-stats-note">未检测到符合 <code>数字_概念名</code> 格式的子文件夹</p>`;
+  }
+
+  html += '<div class="dataset-stats-summary">';
+  html += `<div class="stat-row"><span>原始图片总数</span><span>${total_images}</span></div>`;
+  html += `<div class="stat-row"><span>乘以重复后的有效图片数</span><span>${total_images_with_repeats}</span></div>`;
+  html += `<div class="stat-row"><span>有效 batch size (batch × grad_accum)</span><span>${effectiveBatch}</span></div>`;
+  html += `<div class="stat-row"><span>每 epoch 步数</span><span>${stepsPerEpoch.toLocaleString()}</span></div>`;
+  html += `<div class="stat-row stat-row-highlight"><span>总训练步数</span><span>${totalSteps.toLocaleString()}</span></div>`;
+  html += '</div>';
+
+  if (total_images_with_repeats > 0 && stepsPerEpoch > 0) {
+    html += '<div class="dataset-stats-suggestions">';
+    html += '<div class="dataset-stats-suggest-title">💡 参考</div>';
+    const for500 = Math.max(1, Math.round(500 / stepsPerEpoch));
+    const for1000 = Math.max(1, Math.round(1000 / stepsPerEpoch));
+    const for1500 = Math.max(1, Math.round(1500 / stepsPerEpoch));
+    const for2000 = Math.max(1, Math.round(2000 / stepsPerEpoch));
+    const for3000 = Math.max(1, Math.round(3000 / stepsPerEpoch));
+    html += `<span>达到 ~500 步需要 ${for500} epoch； ~1,000 步需要 ${for1000} epoch； ~1,500 步需要 ${for1500} epoch； ~2,000 步需要 ${for2000} epoch； ~3,000 步需要 ${for3000} epoch</span>`;
+    html += '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 function updateVisibility() {
@@ -1167,7 +1257,7 @@ function allowedModelTrainTypesForCurrentRoute() {
 }
 
 function applyImportedConfig(config) {
-  const normalizedConfig = expandImportedNetworkArgs(config);
+  const normalizedConfig = expandImportedArgs(config);
   for (const [name, value] of Object.entries(normalizedConfig)) {
     const input = document.querySelector(`[name="${CSS.escape(name)}"]`);
     if (!input) continue;
@@ -1179,24 +1269,68 @@ function applyImportedConfig(config) {
   updateVisibility();
   updateEditedFields(state.fields);
   updatePreview(state.fields);
+  datasetInfoCache = null;
+  updateDatasetStats();
 }
 
-function expandImportedNetworkArgs(config) {
-  const result = { ...config };
-  if (!Array.isArray(config.network_args)) return result;
+const OPTIMIZER_ARG_TO_FIELD = {
+  d_coef: { prodigy: "prodigy_d_coef", prodigyplus: "prodigyplus_d_coef" },
+  betas: { prodigyplus: "prodigyplus_betas" },
+  schedulefree_c: { prodigyplus: "prodigyplus_schedulefree_c" },
+  prodigy_steps: { prodigyplus: "prodigyplus_prodigy_steps" },
+};
 
-  const customArgs = [];
-  for (const arg of config.network_args) {
-    const text = String(arg);
-    const separator = text.indexOf("=");
-    const name = separator >= 0 ? text.slice(0, separator) : text;
-    if (["network_reg_dims", "network_reg_lrs"].includes(name)) {
-      result[name] = separator >= 0 ? text.slice(separator + 1) : "";
-    } else {
-      customArgs.push(text);
+function expandImportedArgs(config) {
+  const result = { ...config };
+
+  // Parse network_args
+  if (Array.isArray(config.network_args)) {
+    const customArgs = [];
+    for (const arg of config.network_args) {
+      const text = String(arg);
+      const separator = text.indexOf("=");
+      const name = separator >= 0 ? text.slice(0, separator) : text;
+      if (["network_reg_dims", "network_reg_lrs"].includes(name)) {
+        result[name] = separator >= 0 ? text.slice(separator + 1) : "";
+      } else {
+        customArgs.push(text);
+      }
     }
+    if (customArgs.length) result.network_args_custom = customArgs;
   }
-  if (customArgs.length) result.network_args_custom = customArgs;
+
+  // Parse optimizer_args back into individual form fields
+  if (Array.isArray(config.optimizer_args)) {
+    const optimType = String(config.optimizer_type ?? "");
+    const isProdigy = optimType === "Prodigy";
+    const isProdigyPlus = optimType.includes("ProdigyPlusScheduleFree");
+    const customArgs = [];
+
+    for (const arg of config.optimizer_args) {
+      const text = String(arg);
+      const separator = text.indexOf("=");
+      const name = separator >= 0 ? text.slice(0, separator) : text;
+      const value = separator >= 0 ? text.slice(separator + 1) : "";
+
+      const mapping = OPTIMIZER_ARG_TO_FIELD[name];
+      let fieldName = null;
+      if (mapping) {
+        if (isProdigy && mapping.prodigy) fieldName = mapping.prodigy;
+        else if (isProdigyPlus && mapping.prodigyplus) fieldName = mapping.prodigyplus;
+        else if (mapping.prodigy) fieldName = mapping.prodigy;
+        else if (mapping.prodigyplus) fieldName = mapping.prodigyplus;
+      }
+
+      if (fieldName) {
+        result[fieldName] = value;
+      } else {
+        customArgs.push(text);
+      }
+    }
+    if (customArgs.length) result.optimizer_args_custom = customArgs;
+    else delete result.optimizer_args_custom;
+  }
+
   return result;
 }
 

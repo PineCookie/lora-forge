@@ -10,6 +10,13 @@ Schema.intersect([
     }).description("训练用模型"),
 
     Schema.object({
+        train_data_dir: SHARED_SCHEMAS.RAW.DATASET_SETTINGS.train_data_dir,
+        output_name: SHARED_SCHEMAS.RAW.SAVE_FIELDS.output_name,
+        output_dir: SHARED_SCHEMAS.RAW.SAVE_FIELDS.output_dir,
+        logging_dir: SHARED_SCHEMAS.RAW.LOG_FIELDS.logging_dir,
+    }).description("⚡ 快速配置"),
+
+    Schema.object({
         timestep_sampling: Schema.union(["sigma", "uniform", "sigmoid", "shift", "flux_shift"]).default("sigmoid").description("时间步采样"),
         weighting_scheme: Schema.union(["sigma_sqrt", "logit_normal", "mode", "cosmap", "none", "uniform"]).default("uniform").description("时间步损失权重方案"),
         sigmoid_scale: Schema.number().step(0.001).default(1.0).description("sigmoid 缩放"),
@@ -30,11 +37,20 @@ Schema.intersect([
             min_bucket_reso: Schema.number().default(512).description("arb 桶最小分辨率"),
             max_bucket_reso: Schema.number().default(2048).description("arb 桶最大边长。Anima 方图建议不超过 1536；如需 2:1 等宽屏图，可提高到 2048 或更高，但显存占用按总像素增长"),
             bucket_reso_steps: Schema.number().default(16).description("arb 桶分辨率划分单位。Anima 推荐 16"),
-        })
+        }, ["train_data_dir"])
     ).description("数据集设置"),
 
-    // 保存设置
-    SHARED_SCHEMAS.SAVE_SETTINGS,
+    // 保存设置（output_name / output_dir 已移至 ⚡ 快速配置）
+    Schema.intersect([
+        Schema.object(UpdateSchema(SHARED_SCHEMAS.RAW.SAVE_FIELDS, {}, ["output_name", "output_dir"])).description("保存设置"),
+        Schema.union([
+            Schema.object({
+                save_state: Schema.const(true).required(),
+                save_last_n_epochs_state: Schema.number().min(1).description("仅保存最后 n epoch 的训练状态"),
+            }),
+            Schema.object({})
+        ])
+    ]),
 
     Schema.object({
         max_train_epochs: Schema.number().min(1).default(10).description("最大训练 epoch（轮数）"),
@@ -91,8 +107,17 @@ Schema.intersect([
         ]),
     ]),
 
-    // 日志设置
-    SHARED_SCHEMAS.LOG_SETTINGS,
+    // 日志设置（logging_dir 已移至 ⚡ 快速配置）
+    Schema.intersect([
+        Schema.object(UpdateSchema(SHARED_SCHEMAS.RAW.LOG_FIELDS, {}, ["logging_dir"])).description("日志设置"),
+        Schema.union([
+            Schema.object({
+                log_with: Schema.const("wandb").required(),
+                wandb_api_key: Schema.string().required().description("wandb 的 api 密钥"),
+            }),
+            Schema.object({}),
+        ]),
+    ]),
 
     // caption 选项
     Schema.object(UpdateSchema(SHARED_SCHEMAS.RAW.CAPTION_SETTINGS, {}, ["max_token_length"])).description("caption（Tag）选项"),

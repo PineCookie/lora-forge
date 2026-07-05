@@ -310,6 +310,60 @@ async def get_files(pick_type) -> APIResponse:
     })
 
 
+@router.get("/dataset_info")
+async def get_dataset_info(train_data_dir: str = "") -> APIResponse:
+    """Return image counts and repeat info for a dataset directory.
+
+    Scans subdirectories matching the pattern ^\\d+_.+ (repeat_count_name),
+    counts images in each, and returns totals.
+    """
+    if not train_data_dir or not os.path.isdir(train_data_dir):
+        return APIResponseFail(message="训练数据集路径不存在或无效")
+
+    image_extensions = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+    subdirs_info = []
+    total_images_raw = 0
+    total_images_with_repeats = 0
+
+    try:
+        entries = sorted(os.listdir(train_data_dir))
+    except OSError:
+        return APIResponseFail(message="无法读取训练数据集目录")
+
+    for entry in entries:
+        entry_path = os.path.join(train_data_dir, entry)
+        if not os.path.isdir(entry_path):
+            continue
+
+        match = re.match(r"^(\d+)_(.+)$", entry)
+        if not match:
+            continue
+
+        repeat = int(match.group(1))
+        concept_name = match.group(2)
+
+        image_count = 0
+        for root, _dirs, files in os.walk(entry_path):
+            for f in files:
+                if os.path.splitext(f)[1].lower() in image_extensions:
+                    image_count += 1
+
+        subdirs_info.append({
+            "name": entry,
+            "concept": concept_name,
+            "repeat": repeat,
+            "image_count": image_count,
+        })
+        total_images_raw += image_count
+        total_images_with_repeats += image_count * repeat
+
+    return APIResponseSuccess(data={
+        "subdirs": subdirs_info,
+        "total_images": total_images_raw,
+        "total_images_with_repeats": total_images_with_repeats,
+    })
+
+
 @router.get("/tasks", response_model_exclude_none=True)
 async def get_tasks() -> APIResponse:
     return APIResponseSuccess(data={

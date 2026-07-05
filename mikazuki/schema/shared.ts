@@ -40,7 +40,21 @@
                 cache_text_encoder_outputs_to_disk: Schema.boolean().description("缓存文本编码器的输出到磁盘"),
                 persistent_data_loader_workers: Schema.boolean().default(true).description("保留加载训练集的worker，减少每个 epoch 之间的停顿。"),
                 vae_batch_size: Schema.number().min(1).description("vae 编码批量大小"),
-            }
+            },
+            SAVE_FIELDS: {
+                output_name: Schema.string().default("model_name").description("模型保存名称"),
+                output_dir: Schema.string().role('filepicker', { type: "folder" }).default("./output").description("模型保存文件夹"),
+                save_model_as: Schema.union(["safetensors", "pt", "ckpt"]).default("safetensors").description("模型保存格式"),
+                save_precision: Schema.union(["fp16", "float", "bf16"]).default("bf16").description("模型保存精度"),
+                save_every_n_epochs: Schema.number().default(2).description("每 N epoch（轮）自动保存一次模型"),
+                save_state: Schema.boolean().default(false).description("保存训练状态 配合 `resume` 参数可以继续从某个状态训练"),
+            },
+            LOG_FIELDS: {
+                log_with: Schema.union(["tensorboard", "wandb"]).default("tensorboard").description("日志模块"),
+                log_prefix: Schema.string().description("日志前缀"),
+                log_tracker_name: Schema.string().description("日志追踪器名称"),
+                logging_dir: Schema.string().role('filepicker', { type: "folder" }).default("./logs").description("日志保存文件夹"),
+            },
         },
 
         LYCORIS_MAIN: Schema.union([
