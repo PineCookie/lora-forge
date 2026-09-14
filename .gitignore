@@ -18,9 +18,8 @@ python
 git
 wd14_tagger_model
 
-# kohya-ss/sd-scripts checkout cloned/updated by the launcher (see README); not part of
-# this repository, so `git add -A` must not pick it up. Leading slash keeps the tracked
-# mikazuki/scripts and frontend-src/scripts directories unaffected.
+# kohya-ss/sd-scripts clone created by the launcher (see README); not part of this repo.
+# Leading slash keeps the tracked mikazuki/scripts and frontend-src/scripts unaffected.
 /scripts/
 
 train/*

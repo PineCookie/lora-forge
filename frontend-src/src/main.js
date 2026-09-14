@@ -31,8 +31,7 @@ const state = {
   current: {},
   currentRoute: null,
   subsetTimestepSamplingOffsets: new Map(),
-  // dataset directory the offsets above were entered for; offsets are dropped as soon
-  // as the form points at another dataset, so stale folder names can never be submitted
+  // dataset the offsets above belong to; dropped when the form points at another dataset
   subsetOffsetDatasetDir: null,
   collapsedSections: new Set(),
   fields: [],
@@ -578,9 +577,8 @@ function normalizeTrainingConfig(config) {
   normalizeConstraintCombinations(config);
 }
 
-// Last line of defence before the config is submitted/exported: sd-scripts rejects these
-// combinations with a runtime assert, and anything set through ui_custom_params or a preset
-// never passed through the form's live coupling.
+// Last line of defence before submit/export: sd-scripts asserts on these combinations, and
+// ui_custom_params or an imported preset never passes through the form's live coupling.
 function normalizeConstraintCombinations(config) {
   if (config.compile_fullgraph) config.split_attn = false;
 
@@ -597,8 +595,7 @@ function normalizeConstraintCombinations(config) {
     config.network_train_text_encoder_only = false;
   }
 
-  // full_precision has already been converted into full_fp16 / full_bf16 above; sd-scripts
-  // asserts that they agree with mixed_precision
+  // full_precision became full_fp16/full_bf16 above; sd-scripts requires matching mixed_precision
   if (config.full_fp16) config.mixed_precision = "fp16";
   else if (config.full_bf16) config.mixed_precision = "bf16";
 }
@@ -875,7 +872,7 @@ function visibilityRule(name) {
     v2: ["model_train_type", ["sd-lora", "sd-dreambooth"]],
     v_parameterization: ["model_train_type", ["sd-lora", "sdxl-lora", "sd-dreambooth", "sdxl-finetune"]],
     scale_v_pred_loss_like_noise_pred: ["v_parameterization", true],
-    // Anima per-block torch.compile: the sub-options only matter while compile is enabled
+    // Anima per-block compile: these only matter while compile is enabled
     compile_backend: ["compile", true],
     compile_mode: ["compile", true],
     compile_dynamic: ["compile", true],
@@ -1080,9 +1077,8 @@ function renderDatasetStats(el, info, batchSize, gradAcc, epochs, dir) {
   const { subdirs, total_images_with_repeats, total_images } = info;
   const effectiveBatch = batchSize * gradAcc;
 
-  // Drop offsets that belong to another dataset or to subfolders that no longer exist:
-  // an offset keyed by a missing folder is rejected by /api/run and would block training
-  // while no input is left in the UI to clear it.
+  // Drop offsets for another dataset or for subfolders that no longer exist: /api/run
+  // rejects unknown folders, and the input to clear them would be gone from the UI.
   if (dir !== state.subsetOffsetDatasetDir) {
     state.subsetTimestepSamplingOffsets.clear();
     state.subsetOffsetDatasetDir = dir;
@@ -1324,9 +1320,8 @@ function syncMixedPrecisionWithFullPrecision() {
   else if (fullPrecision === "full_bf16") setFormField("mixed_precision", "bf16");
 }
 
-// Keeps combinations that sd-scripts rejects with a runtime assert out of the form.
-// `target` is the field the user just edited, so the exclusion follows their intent;
-// the full pass afterwards also fixes presets/imported configs, where no event fires.
+// Keeps combinations that sd-scripts asserts on out of the form; `target` is the field the
+// user just edited, and the full pass afterwards also fixes imported configs.
 function applyExclusiveRules(target) {
   const name = target?.name;
 
@@ -1346,8 +1341,8 @@ function applyExclusiveRules(target) {
     setFormField("blocks_to_swap", "");
   }
 
-  // only Anima and SDXL assert "network_train_unet_only or not cache_text_encoder_outputs";
-  // FLUX/SD3 support caching one text encoder while training the other
+  // only Anima/SDXL assert "unet_only or no TE caching"; FLUX/SD3 cache one encoder while
+  // training the other
   if (["anima-lora", "sdxl-lora"].includes(currentTrainType())) {
     if (name === "cache_text_encoder_outputs" && target.checked) {
       setFormField("network_train_text_encoder_only", false);
@@ -1360,8 +1355,8 @@ function applyExclusiveRules(target) {
     }
   }
 
-  // full pass (also runs after importing a config). Same priority as
-  // normalizeConstraintCombinations(): an explicit block count wins over the offload flags.
+  // full pass (also runs after import); same priority as normalizeConstraintCombinations():
+  // an explicit block count wins over the offload flags
   if (checkboxChecked("compile_fullgraph")) setFormField("split_attn", false);
   const blockSwap = Number(document.querySelector('[name="blocks_to_swap"]')?.value) || 0;
   if (blockSwap > 0) {
@@ -1465,7 +1460,7 @@ function applyImportedConfig(config) {
     else if (isResolutionField(name)) input.value = formatResolutionForInput(value);
     else input.value = Array.isArray(value) ? value.join("\n") : value;
   }
-  applyExclusiveRules(null);  // fix constrained combinations in the imported config
+  applyExclusiveRules(null);  // full pass: fix constrained combinations from the imported config
   applyDependentValues();
   updateVisibility();
   updateEditedFields(state.fields);

@@ -54,16 +54,10 @@ trainer_mapping = {
     "anima-lora": "./scripts/sd-scripts/anima_train_network.py",
 }
 
-# These settings move into the generated dataset_config only when the user
-# assigns a non-zero timestep offset to a scanned subset. Keeping the normal
-# flat-config route untouched preserves backward compatibility for all other
-# training runs.
-#
-# Every key listed here must also exist in sd-scripts' dataset [general] schema
-# (library/config_util.py), otherwise config_util.sanitize_user_config rejects the
-# generated file with "extra keys not allowed". In particular `weighted_captions`
-# is NOT a dataset-config key -- it is a top-level CLI argument only -- so it must
-# stay out of this set (the GUI always sends it, because it is a boolean field).
+# Keys moved into the generated dataset_config; only used when a subset has a non-zero
+# timestep offset. Every key must also exist in sd-scripts' dataset [general] schema, or
+# config_util.sanitize_user_config rejects the whole file with "extra keys not allowed" --
+# notably weighted_captions is a top-level CLI argument only, so it stays out of this set.
 DATASET_CONFIG_KEYS = {
     "train_batch_size", "resolution", "enable_bucket", "min_bucket_reso",
     "max_bucket_reso", "bucket_reso_steps", "bucket_no_upscale",
@@ -82,12 +76,9 @@ def _parse_resolution(value):
 
 
 def _scan_subsets(root: str, is_reg: bool = False):
-    """Scan `repeats_name` subdirectories into subset configs.
-
-    This mirrors sd-scripts' config_util.generate_dreambooth_subsets_config_by_subdirs(),
-    so an offset run builds the very same subsets as the flat train_data_dir route:
-    the same directory names are accepted, and `class_tokens` (used as the caption for
-    images that have no caption file) is derived from the folder name.
+    """Scan `repeats_name` subdirectories into subset configs, mirroring sd-scripts'
+    generate_dreambooth_subsets_config_by_subdirs() (same directory names, same
+    class_tokens) so offset runs build the same subsets as the flat train_data_dir route.
     """
     subsets = []
     for entry in sorted(os.listdir(root)):
@@ -116,11 +107,10 @@ def _scan_subsets(root: str, is_reg: bool = False):
 
 
 def _sd_scripts_supports_timestep_offset() -> bool:
-    """Check whether the installed sd-scripts can apply per-subset timestep offsets.
+    """True if the installed sd-scripts can apply per-subset timestep offsets.
 
-    Older checkouts (the `sd3` branch, or tags up to v0.11.1) accept
-    custom_attributes.timestep_sampling in the dataset TOML but never read it, and
-    sd-scripts ignores unknown config keys silently, so the offset would be a no-op.
+    Older checkouts (sd3 branch, tags up to v0.11.1) accept the attribute but never read
+    it, and sd-scripts ignores unknown config keys silently.
     """
     path = Path(os.getcwd()) / "scripts" / "sd-scripts" / "library" / "flux_train_utils.py"
     try:
@@ -149,8 +139,8 @@ def create_offset_dataset_config(config: dict, offsets: dict, dataset_path: str)
 
     if not _sd_scripts_supports_timestep_offset():
         raise ValueError(
-            "当前 sd-scripts 不支持子文件夹时间步偏移（需要 main 分支，sd3/v0.11.1 及更早版本会静默忽略）。"
-            "请先执行 update_sd_scripts.ps1 --branch main 更新后再试。"
+            "当前 sd-scripts 不支持子文件夹时间步偏移（需 main 分支；sd3 / v0.11.1 及更早会静默忽略）。"
+            "请先执行 update_sd_scripts.ps1 --branch main 更新。"
         )
 
     train_root = config.get("train_data_dir", "")
@@ -170,9 +160,8 @@ def create_offset_dataset_config(config: dict, offsets: dict, dataset_path: str)
         value = config.pop(key)
         if key == "train_batch_size":
             general["batch_size"] = value
-            # the dataset's batch size comes from general.batch_size, but the trainer also
-            # reports args.train_batch_size (LoRA metadata, DeepSpeed micro batch size),
-            # which would otherwise fall back to the argparse default of 1
+            # general.batch_size drives the dataset; keep the key so args.train_batch_size
+            # (LoRA metadata, DeepSpeed micro batch) does not fall back to 1
             config[key] = value
         elif key == "resolution":
             general[key] = _parse_resolution(value)
@@ -289,19 +278,17 @@ async def create_toml_file(request: Request):
         if not validated:
             return APIResponseFail(message=message)
 
-        # Anima needs the Qwen3 text encoder and the Qwen-Image VAE as well; validate them here
-        # so a missing path is reported in the UI instead of failing inside the training script.
+        # qwen3 / vae are mandatory for Anima: report them here, not inside the trainer
         if model_train_type == "anima-lora":
             validated, message = train_utils.validate_anima_model_paths(config.get("qwen3"), config.get("vae"))
             if not validated:
                 return APIResponseFail(message=message)
 
-        # Anima and FLUX have no weighted tokenization (strategy_anima / strategy_flux do not
-        # implement it): the setting is either silently ignored or raises NotImplementedError.
+        # Anima / FLUX have no weighted tokenization (their strategy does not implement it)
         if model_train_type in {"anima-lora", "flux-lora"} and config.get("weighted_captions"):
             return APIResponseFail(
-                message="当前训练类型不支持 weighted_captions（带权重的 token）：只有 SD / SDXL / Lumina "
-                "实现了加权分词，Anima 与 FLUX 会静默忽略或直接报错。请关闭“weighted_captions”后重试。"
+                message="当前训练类型不支持 weighted_captions：只有 SD / SDXL / Lumina 实现了加权分词，"
+                "Anima 与 FLUX 会静默忽略或直接报错。请关闭该选项后重试。"
             )
 
         if "prompt_file" in config and config["prompt_file"].strip() != "":

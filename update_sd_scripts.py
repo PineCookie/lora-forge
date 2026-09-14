@@ -5,10 +5,8 @@ from pathlib import Path
 
 
 REPO_URL = "https://github.com/kohya-ss/sd-scripts.git"
-# Keep this in sync with gui.py's --sd-scripts-branch default (and
-# launch_utils.prepare_sd_scripts): Anima training relies on options that only
-# exist on main (per-block torch.compile, --qwen_image_vae_2d, per-subset
-# timestep offsets), and older branches silently ignore them.
+# Keep in sync with gui.py's --sd-scripts-branch and launch_utils.prepare_sd_scripts: Anima
+# needs options that only exist on main, and older branches ignore unknown settings silently.
 DEFAULT_BRANCH = "main"
 
 
