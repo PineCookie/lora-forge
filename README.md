@@ -147,7 +147,7 @@ Run `tensorboard.ps1` to start TensorBoard at http://localhost:6006/
 
 ## Updating sd-scripts
 
-`scripts/sd-scripts` is cloned as its own Git checkout from `kohya-ss/sd-scripts`, not as a parent-repo submodule. The launcher clones it when missing, but it does not auto-update an existing checkout.
+`scripts/sd-scripts` is cloned as its own Git checkout from `kohya-ss/sd-scripts`, not as a parent-repo submodule. The launcher clones it when missing, but it does not auto-update an existing checkout. It is ignored by this repository (see `.gitignore`), so do not remove it with `git clean`; if it is missing, start the launcher again to re-clone it.
 
 To update it to the latest commit on the configured branch:
 
