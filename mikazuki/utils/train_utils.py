@@ -198,12 +198,41 @@ def validate_model(model_name: str, training_type: str = "sd-lora"):
         return True, "ok"
 
     # huggingface model repo
-    if model_name.count("/") == 1 \
-            and not model_name[0] in [".", "/"] \
-            and not model_name.split(".")[-1] in ["pt", "pth", "ckpt", "safetensors"]:
+    if is_huggingface_repo_id(model_name):
         return True, "ok"
 
     return False, "model not found"
+
+
+def is_huggingface_repo_id(name) -> bool:
+    """True for values that look like a HuggingFace repo id, e.g. "Qwen/Qwen3-0.6B"."""
+    if not isinstance(name, str) or not name:
+        return False
+    return (
+        name.count("/") == 1
+        and name[0] not in [".", "/"]
+        and name.split(".")[-1] not in ["pt", "pth", "ckpt", "safetensors"]
+    )
+
+
+def validate_anima_model_paths(qwen3, vae):
+    """Validate the two extra paths Anima needs besides the DiT model.
+
+    Anima requires the Qwen3-0.6B text encoder and the Qwen-Image VAE; both may be a local
+    file/directory or a HuggingFace repo id. Without this check a missing path only shows up
+    as a traceback in the training log. Returns (ok, message).
+    """
+    problems = []
+    for value, label in ((qwen3, "Qwen3-0.6B 文本编码器（qwen3）"), (vae, "Qwen-Image VAE（vae）")):
+        value = value.strip() if isinstance(value, str) else value
+        if not value:
+            problems.append(f"{label} 未填写")
+        elif not os.path.exists(value) and not is_huggingface_repo_id(value):
+            problems.append(f"{label} 路径不存在：{value}")
+
+    if problems:
+        return False, "；".join(problems)
+    return True, "ok"
 
 
 def validate_data_dir(path):

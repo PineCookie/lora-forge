@@ -289,6 +289,21 @@ async def create_toml_file(request: Request):
         if not validated:
             return APIResponseFail(message=message)
 
+        # Anima needs the Qwen3 text encoder and the Qwen-Image VAE as well; validate them here
+        # so a missing path is reported in the UI instead of failing inside the training script.
+        if model_train_type == "anima-lora":
+            validated, message = train_utils.validate_anima_model_paths(config.get("qwen3"), config.get("vae"))
+            if not validated:
+                return APIResponseFail(message=message)
+
+        # Anima and FLUX have no weighted tokenization (strategy_anima / strategy_flux do not
+        # implement it): the setting is either silently ignored or raises NotImplementedError.
+        if model_train_type in {"anima-lora", "flux-lora"} and config.get("weighted_captions"):
+            return APIResponseFail(
+                message="当前训练类型不支持 weighted_captions（带权重的 token）：只有 SD / SDXL / Lumina "
+                "实现了加权分词，Anima 与 FLUX 会静默忽略或直接报错。请关闭“weighted_captions”后重试。"
+            )
+
         if "prompt_file" in config and config["prompt_file"].strip() != "":
             prompt_file = config["prompt_file"].strip()
             if not os.path.exists(prompt_file):
