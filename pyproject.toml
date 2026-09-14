@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = "==3.12.*"
 dependencies = [
     # Torch
-    "torch<2.15",
+    "torch>=2.9,<2.15",
     "torchvision",
     "triton<3.9; sys_platform != 'win32'",
     "triton-windows<3.9; sys_platform == 'win32'",

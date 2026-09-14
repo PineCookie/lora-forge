@@ -68,6 +68,15 @@ DATASET_CONFIG_KEYS = {
 }
 
 
+# Values never written to the log in clear text (the received config is logged for debugging).
+SENSITIVE_CONFIG_KEYS = ("wandb_api_key", "huggingface_token", "hf_token")
+
+
+def redact_config(config: dict) -> dict:
+    """Config copy for logging, with secrets masked."""
+    return {key: ("<redacted>" if key in SENSITIVE_CONFIG_KEYS and value else value) for key, value in config.items()}
+
+
 def _parse_resolution(value):
     if not isinstance(value, str):
         return value
@@ -259,7 +268,7 @@ async def create_toml_file(request: Request):
         json_data = await request.body()
 
         config: dict = json.loads(json_data.decode("utf-8"))
-        log.info(f"Training config received: {config}")
+        log.info(f"Training config received: {redact_config(config)}")
         train_utils.fix_config_types(config)
 
         subset_timestep_sampling_offsets = config.pop("subset_timestep_sampling_offsets", {})

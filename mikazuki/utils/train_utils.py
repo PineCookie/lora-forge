@@ -49,7 +49,7 @@ MODEL_SIGNATURE = [
         "type": ModelType.FLUX,
         "signature": [
             "double_blocks.0.img_mlp.0.weight",
-            "guidance_in.in_layer.weight"
+            "guidance_in.in_layer.weight",
             "model.diffusion_model.double_blocks",
             "double_blocks.0.img_attn.norm.query_norm.scale",
         ]
@@ -78,7 +78,7 @@ MODEL_SIGNATURE = [
         "type": ModelType.LoRA,
         "signature": [
             "lora_te_text_model_encoder",
-            "lora_unet_up_blocks"
+            "lora_unet_up_blocks",
             "lora_unet_input_blocks_4_1_transformer_blocks_0_attn1_to_k.alpha",
             "lora_unet_input_blocks_4_1_transformer_blocks_0_attn1_to_k.lora_up.weight",
 
@@ -287,23 +287,6 @@ def suggest_num_repeat(img_count):
         return 3
 
     return 1
-
-
-def check_training_params(data):
-    potential_path = [
-        "train_data_dir", "reg_data_dir", "output_dir"
-    ]
-    file_paths = [
-        "sample_prompts"
-    ]
-    for p in potential_path:
-        if p in data and not os.path.exists(data[p]):
-            return False
-
-    for f in file_paths:
-        if f in data and not os.path.exists(data[f]):
-            return False
-    return True
 
 
 def get_total_images(path, recursive=True):

@@ -1165,7 +1165,7 @@ function runConfigFromForm(groups, previewTimesteps) {
 
 async function runTrainerConfig(groups, previewTimesteps) {
   const config = runConfigFromForm(groups, previewTimesteps);
-  console.log(previewTimesteps ? "Previewing timesteps with config:" : "Form submitted with config:", config);
+  console.log(previewTimesteps ? "Previewing timesteps with config:" : "Form submitted with config:", redactConfigForLog(config));
   try {
     setStatus(previewTimesteps ? "正在生成时间步分布预览..." : "正在启动训练...");
     const result = await api("/api/run", {
@@ -1178,6 +1178,14 @@ async function runTrainerConfig(groups, previewTimesteps) {
     console.error("Error:", error);
     setStatus(error.message, "error");
   }
+}
+
+function redactConfigForLog(config) {
+  const copy = { ...config };
+  for (const key of ["wandb_api_key", "huggingface_token"]) {
+    if (copy[key]) copy[key] = "<redacted>";
+  }
+  return copy;
 }
 
 function timestepOffsetRecommendation() {
