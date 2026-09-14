@@ -82,17 +82,51 @@ def _parse_resolution(value):
 
 
 def _scan_subsets(root: str, is_reg: bool = False):
+    """Scan `repeats_name` subdirectories into subset configs.
+
+    This mirrors sd-scripts' config_util.generate_dreambooth_subsets_config_by_subdirs(),
+    so an offset run builds the very same subsets as the flat train_data_dir route:
+    the same directory names are accepted, and `class_tokens` (used as the caption for
+    images that have no caption file) is derived from the folder name.
+    """
     subsets = []
     for entry in sorted(os.listdir(root)):
         entry_path = os.path.join(root, entry)
-        match = re.match(r"^(\d+)_.+", entry)
-        if not os.path.isdir(entry_path) or not match:
+        if not os.path.isdir(entry_path):
             continue
-        subset = {"image_dir": entry_path.replace("\\", "/"), "num_repeats": int(match.group(1))}
+
+        # identical to sd-scripts' extract_dreambooth_params()
+        tokens = entry.split("_")
+        try:
+            num_repeats = int(tokens[0])
+        except ValueError:
+            continue
+        if num_repeats < 1:
+            continue
+
+        subset = {
+            "image_dir": entry_path.replace("\\", "/"),
+            "num_repeats": num_repeats,
+            "class_tokens": "_".join(tokens[1:]),
+        }
         if is_reg:
             subset["is_reg"] = True
         subsets.append((entry, subset))
     return subsets
+
+
+def _sd_scripts_supports_timestep_offset() -> bool:
+    """Check whether the installed sd-scripts can apply per-subset timestep offsets.
+
+    Older checkouts (the `sd3` branch, or tags up to v0.11.1) accept
+    custom_attributes.timestep_sampling in the dataset TOML but never read it, and
+    sd-scripts ignores unknown config keys silently, so the offset would be a no-op.
+    """
+    path = Path(os.getcwd()) / "scripts" / "sd-scripts" / "library" / "flux_train_utils.py"
+    try:
+        return "timestep_sampling_offset" in path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return True  # cannot inspect the checkout: do not block training
 
 
 def create_offset_dataset_config(config: dict, offsets: dict, dataset_path: str):
@@ -113,6 +147,12 @@ def create_offset_dataset_config(config: dict, offsets: dict, dataset_path: str)
     if not parsed_offsets:
         return False
 
+    if not _sd_scripts_supports_timestep_offset():
+        raise ValueError(
+            "当前 sd-scripts 不支持子文件夹时间步偏移（需要 main 分支，sd3/v0.11.1 及更早版本会静默忽略）。"
+            "请先执行 update_sd_scripts.ps1 --branch main 更新后再试。"
+        )
+
     train_root = config.get("train_data_dir", "")
     subsets = _scan_subsets(train_root)
     if not subsets:
@@ -130,6 +170,10 @@ def create_offset_dataset_config(config: dict, offsets: dict, dataset_path: str)
         value = config.pop(key)
         if key == "train_batch_size":
             general["batch_size"] = value
+            # the dataset's batch size comes from general.batch_size, but the trainer also
+            # reports args.train_batch_size (LoRA metadata, DeepSpeed micro batch size),
+            # which would otherwise fall back to the argparse default of 1
+            config[key] = value
         elif key == "resolution":
             general[key] = _parse_resolution(value)
         else:
