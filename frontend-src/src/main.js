@@ -31,6 +31,9 @@ const state = {
   current: {},
   currentRoute: null,
   subsetTimestepSamplingOffsets: new Map(),
+  // dataset directory the offsets above were entered for; offsets are dropped as soon
+  // as the form points at another dataset, so stale folder names can never be submitted
+  subsetOffsetDatasetDir: null,
   collapsedSections: new Set(),
   fields: [],
   initialFieldValues: new Map(),
@@ -653,6 +656,7 @@ function renderTrainer(route) {
   state.fields = groups;
   state.currentRoute = route;
   state.subsetTimestepSamplingOffsets = new Map();
+  state.subsetOffsetDatasetDir = null;
   state.current = { ...defaultsFrom(groups), ...(route.defaults ?? {}) };
   const timestepPreviewButton = ["flux-lora", "anima-lora"].includes(route.schema)
     ? '<button type="button" id="preview-timesteps">预览时间步分布</button>'
@@ -1006,6 +1010,8 @@ async function updateDatasetStats() {
   if (!dir) {
     el.innerHTML = "";
     datasetInfoCache = null;
+    state.subsetTimestepSamplingOffsets.clear();
+    state.subsetOffsetDatasetDir = null;
     return;
   }
 
@@ -1023,7 +1029,7 @@ async function updateDatasetStats() {
       try {
         const result = await api(`/api/dataset_info?train_data_dir=${encodeURIComponent(dir)}`);
         datasetInfoCache = { dir, data: result };
-        renderDatasetStats(el, result, batchSize, gradAcc, epochs);
+        renderDatasetStats(el, result, batchSize, gradAcc, epochs, dir);
       } catch (err) {
         el.innerHTML = `<span class="dataset-stats-error">无法读取数据集: ${escapeHtml(err.message)}</span>`;
         datasetInfoCache = null;
@@ -1032,12 +1038,24 @@ async function updateDatasetStats() {
     return;
   }
 
-  renderDatasetStats(el, datasetInfoCache.data, batchSize, gradAcc, epochs);
+  renderDatasetStats(el, datasetInfoCache.data, batchSize, gradAcc, epochs, datasetInfoCache.dir);
 }
 
-function renderDatasetStats(el, info, batchSize, gradAcc, epochs) {
+function renderDatasetStats(el, info, batchSize, gradAcc, epochs, dir) {
   const { subdirs, total_images_with_repeats, total_images } = info;
   const effectiveBatch = batchSize * gradAcc;
+
+  // Drop offsets that belong to another dataset or to subfolders that no longer exist:
+  // an offset keyed by a missing folder is rejected by /api/run and would block training
+  // while no input is left in the UI to clear it.
+  if (dir !== state.subsetOffsetDatasetDir) {
+    state.subsetTimestepSamplingOffsets.clear();
+    state.subsetOffsetDatasetDir = dir;
+  }
+  const currentSubdirNames = new Set((subdirs || []).map((s) => s.name));
+  for (const name of [...state.subsetTimestepSamplingOffsets.keys()]) {
+    if (!currentSubdirNames.has(name)) state.subsetTimestepSamplingOffsets.delete(name);
+  }
   // Lower bound: all images in one bucket — ceil(total / batch)
   // Actual: sum over buckets of ceil(bucket_count / batch), which is ≥ lower bound
   const stepsPerEpochMin = effectiveBatch > 0 ? Math.ceil(total_images_with_repeats / effectiveBatch) : 0;
@@ -1058,7 +1076,7 @@ function renderDatasetStats(el, info, batchSize, gradAcc, epochs) {
     }
     html += '</tbody></table>';
     if (supportsOffsets) {
-      html += '<p class="dataset-stats-note">Timestep offset：负值偏向低噪声（细节），正值偏向高噪声（结构）。记录仅适用于 FLUX / Anima 训练；0 保持旧行为。</p>';
+      html += '<p class="dataset-stats-note">Timestep offset：负值偏向低噪声（细节），正值偏向高噪声（结构）。记录仅适用于 FLUX / Anima 训练；0 保持旧行为。⚠ 需 sd-scripts main（> v0.11.1，旧版本会静默忽略）。</p>';
       html += timestepOffsetRecommendation();
     }
   } else {
@@ -1095,9 +1113,11 @@ function renderDatasetStats(el, info, batchSize, gradAcc, epochs) {
 
 function runConfigFromForm(groups, previewTimesteps) {
   const config = readForm(groups);
-  const offsets = Object.fromEntries(
-    [...state.subsetTimestepSamplingOffsets].filter(([, value]) => Number(value) !== 0),
-  );
+  // only submit offsets recorded for the dataset currently selected in the form
+  const currentDir = document.querySelector('[name="train_data_dir"]')?.value?.trim() ?? "";
+  const offsets = state.subsetOffsetDatasetDir === currentDir
+    ? Object.fromEntries([...state.subsetTimestepSamplingOffsets].filter(([, value]) => Number(value) !== 0))
+    : {};
   if (Object.keys(offsets).length) config.subset_timestep_sampling_offsets = offsets;
 
   if (previewTimesteps) {

@@ -11,9 +11,9 @@ Schema.intersect([
 
     Schema.object({
         timestep_sampling: Schema.union(["sigma", "uniform", "sigmoid", "shift"]).default("sigmoid").description("时间步采样"),
-        show_timesteps: Schema.union(["console", "image"]).description("预览时间步分布的格式。请使用“预览时间步分布”按钮；“开始训练”会忽略该预览设置"),
+        show_timesteps: Schema.union(["console", "image"]).description("预览时间步分布的格式。请使用“预览时间步分布”按钮；“开始训练”会忽略该预览设置。⚠ 需 sd-scripts v0.11.1+"),
         show_timesteps_resolution: Schema.string().default("1024").description("预览用假定图像分辨率（H 或 H,W）。flux_shift 模式会使用此值"),
-        show_timesteps_offset: Schema.number().step(0.01).default(0.0).description("时间步预览偏移。只影响 show_timesteps 预览，sigma/uniform 采样时无效"),
+        show_timesteps_offset: Schema.number().step(0.01).default(0.0).description("时间步预览偏移。只影响 show_timesteps 预览，sigma/uniform 采样时无效。⚠ 需 sd-scripts main（> v0.11.1）"),
         sigmoid_scale: Schema.number().step(0.001).default(1.0).description("sigmoid 缩放"),
         model_prediction_type: Schema.union(["raw", "additive", "sigma_scaled"]).default("raw").description("模型预测类型"),
         discrete_flow_shift: Schema.number().step(0.001).default(1.0).description("Euler 调度器离散流位移"),

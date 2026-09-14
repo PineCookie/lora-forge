@@ -18,9 +18,9 @@ Schema.intersect([
 
     Schema.object({
         timestep_sampling: Schema.union(["sigma", "uniform", "sigmoid", "shift", "flux_shift"]).default("sigmoid").description("时间步采样"),
-        show_timesteps: Schema.union(["console", "image"]).description("预览时间步分布的格式。请使用“预览时间步分布”按钮；“开始训练”会忽略该预览设置"),
+        show_timesteps: Schema.union(["console", "image"]).description("预览时间步分布的格式。请使用“预览时间步分布”按钮；“开始训练”会忽略该预览设置。⚠ 需 sd-scripts v0.11.1+"),
         show_timesteps_resolution: Schema.string().default("1024").description("预览用假定图像分辨率（H 或 H,W）。flux_shift 模式会使用此值"),
-        show_timesteps_offset: Schema.number().step(0.01).default(0.0).description("时间步预览偏移。只影响 show_timesteps 预览，sigma/uniform 采样时无效"),
+        show_timesteps_offset: Schema.number().step(0.01).default(0.0).description("时间步预览偏移。只影响 show_timesteps 预览，sigma/uniform 采样时无效。⚠ 需 sd-scripts main（> v0.11.1）"),
         weighting_scheme: Schema.union(["sigma_sqrt", "logit_normal", "mode", "cosmap", "none", "uniform"]).default("uniform").description("时间步损失权重方案"),
         sigmoid_scale: Schema.number().step(0.001).default(1.0).description("sigmoid 缩放"),
         discrete_flow_shift: Schema.number().step(0.001).default(1.0).description("离散流位移"),
