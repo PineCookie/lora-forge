@@ -159,11 +159,19 @@ To update it to the latest commit on the configured branch:
 bash update_sd_scripts.sh
 ```
 
-The default branch is `sd3`. To update from another branch, pass `--branch`, for example:
+The default branch is `main`, matching the branch the launcher clones. Anima training and the
+acceleration options the UI exposes (`--compile`, `--qwen_image_vae_2d`, per-subset timestep
+offsets, `--show_timesteps`) require a recent `main`; older branches such as `sd3` do not have
+them and silently ignore those settings.
+
+To update from another branch, pass `--branch`, for example:
 
 ```powershell
-.\update_sd_scripts.ps1 --branch main
+.\update_sd_scripts.ps1 --branch dev
 ```
+
+The updater follows branches only (tags are supported by `--sd-scripts-branch` when the launcher
+clones sd-scripts, but not by this update script).
 
 The updater uses `git pull --ff-only`, so it will stop instead of overwriting local changes.
 
