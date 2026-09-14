@@ -23,7 +23,7 @@ from mikazuki.log import log
 from mikazuki.tagger.interrogator import (available_interrogators,
                                           on_interrogate)
 from mikazuki.tasks import tm
-from mikazuki.utils import train_utils
+from mikazuki.utils import sd_scripts, train_utils
 from mikazuki.utils.devices import printable_devices
 from mikazuki.utils.tk_window import (open_directory_selector,
                                       open_file_selector)
@@ -116,19 +116,6 @@ def _scan_subsets(root: str, is_reg: bool = False):
     return subsets
 
 
-def _sd_scripts_supports_timestep_offset() -> bool:
-    """True if the installed sd-scripts can apply per-subset timestep offsets.
-
-    Older checkouts (sd3 branch, tags up to v0.11.1) accept the attribute but never read
-    it, and sd-scripts ignores unknown config keys silently.
-    """
-    path = Path(os.getcwd()) / "scripts" / "sd-scripts" / "library" / "flux_train_utils.py"
-    try:
-        return "timestep_sampling_offset" in path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return True  # cannot inspect the checkout: do not block training
-
-
 def create_offset_dataset_config(config: dict, offsets: dict, dataset_path: str):
     """Create a dataset_config for per-subset timestep offsets.
 
@@ -146,12 +133,6 @@ def create_offset_dataset_config(config: dict, offsets: dict, dataset_path: str)
             parsed_offsets[name] = offset
     if not parsed_offsets:
         return False
-
-    if not _sd_scripts_supports_timestep_offset():
-        raise ValueError(
-            "当前 sd-scripts 不支持子文件夹时间步偏移（需 main 分支；sd3 / v0.11.1 及更早会静默忽略）。"
-            "请先执行 update_sd_scripts.ps1 --branch main 更新。"
-        )
 
     train_root = config.get("train_data_dir", "")
     subsets = _scan_subsets(train_root)
@@ -310,6 +291,14 @@ async def create_toml_file(request: Request):
                 message="当前训练类型不支持 weighted_captions：只有 SD / SDXL / Lumina 实现了加权分词，"
                 "Anima / FLUX / SD3 会静默忽略或直接报错。请关闭该选项后重试。"
             )
+
+        # sd-scripts ignores unknown config keys, so an outdated checkout would accept these
+        # options and do nothing; refuse them instead of running a silent no-op.
+        if model_train_type in {"anima-lora", "flux-lora"}:
+            requested = sd_scripts.requested_features(config, has_offsets=bool(subset_timestep_sampling_offsets))
+            missing = sd_scripts.missing_features(requested)
+            if missing:
+                return APIResponseFail(message=sd_scripts.missing_features_message(missing))
 
         if "prompt_file" in config and config["prompt_file"].strip() != "":
             prompt_file = config["prompt_file"].strip()
@@ -569,6 +558,12 @@ async def get_runtime() -> APIResponse:
         versions["sd_scripts"] = launch_utils.git_tag(str(launch_utils.base_dir_path() / "scripts" / "sd-scripts"))
     except Exception:
         versions["sd_scripts"] = "unknown"
+
+    # whether the installed sd-scripts can apply the options this GUI exposes
+    try:
+        versions["sd_scripts_status"] = sd_scripts.compatibility_status()
+    except Exception:
+        versions["sd_scripts_status"] = "unknown"
 
     # PyTorch version
     try:

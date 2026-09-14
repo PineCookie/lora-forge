@@ -968,6 +968,7 @@ function renderVersionInfo() {
   }
   const items = [
     ["sd-scripts", v.sd_scripts || "unknown"],
+    ...(v.sd_scripts_status ? [["sd-scripts 兼容性", v.sd_scripts_status]] : []),
     ["PyTorch", v.pytorch || "unknown"],
     ["Triton", v.triton || "unknown"],
     ["CUDA", v.cuda || "unknown"],

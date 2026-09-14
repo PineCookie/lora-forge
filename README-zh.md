@@ -144,6 +144,11 @@ source .venv/bin/activate
 | `--dev`                      | bool  | false        | 开发者模式，用于禁用某些检查                     |
 | `--open-browser`             | bool  | false        | 服务器启动后自动打开浏览器                      |
 
+## 文档
+
+- [Anima LoRA 训练说明](docs/anima.md)：哪些选项真正生效、每个功能需要的 sd-scripts 版本、加速/显存组合，以及常见的"静默失效"陷阱。
+- 「关于」页会显示当前 sd-scripts 的**兼容性**状态。
+
 ## 鸣谢
 
 本项目基于 Akegarasu 的原始项目 [lora-scripts](https://github.com/Akegarasu/lora-scripts)。感谢 Akegarasu 和原项目贡献者打下的基础。

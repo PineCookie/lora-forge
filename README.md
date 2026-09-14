@@ -175,6 +175,12 @@ clones sd-scripts, but not by this update script).
 
 The updater uses `git pull --ff-only`, so it will stop instead of overwriting local changes.
 
+## Anima training notes
+
+Which Anima options actually take effect, the sd-scripts version each one needs, the speed/memory
+recipes and the known silent-failure traps are documented in [docs/anima.md](docs/anima.md)
+(Chinese). The About page shows an `sd-scripts 兼容性` line for the installed checkout.
+
 ## Thanks
 
 This project is based on Akegarasu's original [lora-scripts](https://github.com/Akegarasu/lora-scripts) project. Thanks to Akegarasu and the original contributors for building the foundation.
