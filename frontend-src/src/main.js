@@ -574,6 +574,33 @@ function normalizeTrainingConfig(config) {
 
   if (!config.network_args?.length) delete config.network_args;
   if (!config.optimizer_args?.length) delete config.optimizer_args;
+
+  normalizeConstraintCombinations(config);
+}
+
+// Last line of defence before the config is submitted/exported: sd-scripts rejects these
+// combinations with a runtime assert, and anything set through ui_custom_params or a preset
+// never passed through the form's live coupling.
+function normalizeConstraintCombinations(config) {
+  if (config.compile_fullgraph) config.split_attn = false;
+
+  if (config.blocks_to_swap) {
+    config.cpu_offload_checkpointing = false;
+    config.unsloth_offload_checkpointing = false;
+  }
+  if (config.cpu_offload_checkpointing || config.unsloth_offload_checkpointing) {
+    delete config.blocks_to_swap;
+  }
+
+  if (["anima-lora", "sdxl-lora"].includes(config.model_train_type) && config.cache_text_encoder_outputs) {
+    config.network_train_unet_only = true;
+    config.network_train_text_encoder_only = false;
+  }
+
+  // full_precision has already been converted into full_fp16 / full_bf16 above; sd-scripts
+  // asserts that they agree with mixed_precision
+  if (config.full_fp16) config.mixed_precision = "fp16";
+  else if (config.full_bf16) config.mixed_precision = "bf16";
 }
 
 function coerceNumericStrings(config, names) {
@@ -848,6 +875,12 @@ function visibilityRule(name) {
     v2: ["model_train_type", ["sd-lora", "sd-dreambooth"]],
     v_parameterization: ["model_train_type", ["sd-lora", "sdxl-lora", "sd-dreambooth", "sdxl-finetune"]],
     scale_v_pred_loss_like_noise_pred: ["v_parameterization", true],
+    // Anima per-block torch.compile: the sub-options only matter while compile is enabled
+    compile_backend: ["compile", true],
+    compile_mode: ["compile", true],
+    compile_dynamic: ["compile", true],
+    compile_fullgraph: ["compile", true],
+    compile_cache_size_limit: ["compile", true],
     wandb_api_key: ["log_with", "wandb"],
   };
   const rule = rules[name];
@@ -859,6 +892,7 @@ function bindForm(groups) {
   form.addEventListener("input", (event) => {
     if (event.target.matches("[data-subset-timestep-offset]")) return;
     updateEditedField(event.target);
+    applyExclusiveRules(event.target);
     applyDependentValues();
     updateVisibility();
     updatePreview(groups);
@@ -867,6 +901,7 @@ function bindForm(groups) {
   form.addEventListener("change", (event) => {
     if (event.target.matches("[data-subset-timestep-offset]")) return;
     updateEditedField(event.target);
+    applyExclusiveRules(event.target);
     applyDependentValues();
     updateVisibility();
     updatePreview(groups);
@@ -1259,6 +1294,89 @@ function setFieldValue(name, value) {
   input.value = value;
 }
 
+function currentTrainType() {
+  return document.querySelector('[name="model_train_type"]')?.value || state.current.model_train_type || "";
+}
+
+function checkboxChecked(name) {
+  const input = document.querySelector(`[name="${CSS.escape(name)}"]`);
+  return input?.type === "checkbox" ? input.checked : false;
+}
+
+function setFormField(name, value) {
+  const input = document.querySelector(`[name="${CSS.escape(name)}"]`);
+  if (!input) return;
+  if (input.type === "checkbox") {
+    const next = Boolean(value);
+    if (input.checked === next) return;
+    input.checked = next;
+  } else {
+    const next = String(value);
+    if (input.value === next) return;
+    input.value = next;
+  }
+  updateEditedField(input);
+}
+
+function syncMixedPrecisionWithFullPrecision() {
+  const fullPrecision = document.querySelector('[name="full_precision"]')?.value;
+  if (fullPrecision === "full_fp16") setFormField("mixed_precision", "fp16");
+  else if (fullPrecision === "full_bf16") setFormField("mixed_precision", "bf16");
+}
+
+// Keeps combinations that sd-scripts rejects with a runtime assert out of the form.
+// `target` is the field the user just edited, so the exclusion follows their intent;
+// the full pass afterwards also fixes presets/imported configs, where no event fires.
+function applyExclusiveRules(target) {
+  const name = target?.name;
+
+  if (name === "compile_fullgraph" && target.checked) setFormField("split_attn", false);
+  if (name === "split_attn" && target.checked) setFormField("compile_fullgraph", false);
+
+  if (name === "blocks_to_swap" && Number(target.value) > 0) {
+    setFormField("cpu_offload_checkpointing", false);
+    setFormField("unsloth_offload_checkpointing", false);
+  }
+  if (name === "cpu_offload_checkpointing" && target.checked) {
+    setFormField("unsloth_offload_checkpointing", false);
+    setFormField("blocks_to_swap", "");
+  }
+  if (name === "unsloth_offload_checkpointing" && target.checked) {
+    setFormField("cpu_offload_checkpointing", false);
+    setFormField("blocks_to_swap", "");
+  }
+
+  // only Anima and SDXL assert "network_train_unet_only or not cache_text_encoder_outputs";
+  // FLUX/SD3 support caching one text encoder while training the other
+  if (["anima-lora", "sdxl-lora"].includes(currentTrainType())) {
+    if (name === "cache_text_encoder_outputs" && target.checked) {
+      setFormField("network_train_text_encoder_only", false);
+      setFormField("network_train_unet_only", true);
+    }
+    if (name === "network_train_text_encoder_only" && target.checked) {
+      setFormField("cache_text_encoder_outputs", false);
+      setFormField("cache_text_encoder_outputs_to_disk", false);
+      setFormField("network_train_unet_only", false);
+    }
+  }
+
+  // full pass (also runs after importing a config). Same priority as
+  // normalizeConstraintCombinations(): an explicit block count wins over the offload flags.
+  if (checkboxChecked("compile_fullgraph")) setFormField("split_attn", false);
+  const blockSwap = Number(document.querySelector('[name="blocks_to_swap"]')?.value) || 0;
+  if (blockSwap > 0) {
+    setFormField("cpu_offload_checkpointing", false);
+    setFormField("unsloth_offload_checkpointing", false);
+  } else if (checkboxChecked("cpu_offload_checkpointing") || checkboxChecked("unsloth_offload_checkpointing")) {
+    setFormField("blocks_to_swap", "");
+  }
+  if (["anima-lora", "sdxl-lora"].includes(currentTrainType()) && checkboxChecked("cache_text_encoder_outputs")) {
+    setFormField("network_train_text_encoder_only", false);
+    setFormField("network_train_unet_only", true);
+  }
+  syncMixedPrecisionWithFullPrecision();
+}
+
 function renderGeneratedArgs(config) {
   const sections = [];
   if (config.optimizer_args?.length) sections.push(["optimizer_args", config.optimizer_args]);
@@ -1347,6 +1465,7 @@ function applyImportedConfig(config) {
     else if (isResolutionField(name)) input.value = formatResolutionForInput(value);
     else input.value = Array.isArray(value) ? value.join("\n") : value;
   }
+  applyExclusiveRules(null);  // fix constrained combinations in the imported config
   applyDependentValues();
   updateVisibility();
   updateEditedFields(state.fields);
