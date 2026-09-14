@@ -100,6 +100,7 @@ def _scan_subsets(root: str, is_reg: bool = False):
         try:
             num_repeats = int(tokens[0])
         except ValueError:
+            log.warning(f"忽略不符合 `重复次数_名称` 格式的子文件夹：{entry}")
             continue
         if num_repeats < 1:
             continue
@@ -196,6 +197,8 @@ def create_offset_dataset_config(config: dict, offsets: dict, dataset_path: str)
 
 
 async def load_schemas():
+    """(Re)read mikazuki/schema/*.ts. Called on every request that serves them, so editing a
+    schema only needs a page refresh instead of a backend restart. A broken file is skipped."""
     avaliable_schemas.clear()
 
     schema_dir = os.path.join(os.getcwd(), "mikazuki", "schema")
@@ -205,25 +208,33 @@ async def load_schemas():
         return hashlib.md5(x.encode()).hexdigest()
 
     for schema_name in schemas:
-        with open(os.path.join(schema_dir, schema_name), encoding="utf-8") as f:
-            content = f.read()
-            avaliable_schemas.append({
-                "name": schema_name.rstrip(".ts"),
-                "schema": content,
-                "hash": lambda_hash(content)
-            })
+        try:
+            with open(os.path.join(schema_dir, schema_name), encoding="utf-8") as f:
+                content = f.read()
+        except OSError as e:
+            log.warning(f"Failed to read schema {schema_name}: {e}")
+            continue
+        avaliable_schemas.append({
+            "name": schema_name.rstrip(".ts"),
+            "schema": content,
+            "hash": lambda_hash(content)
+        })
 
 
 async def load_presets():
+    """(Re)read config/presets/*.toml; a malformed preset is skipped with a warning."""
     avaliable_presets.clear()
 
     preset_dir = os.path.join(os.getcwd(), "config", "presets")
     presets = os.listdir(preset_dir)
 
     for preset_name in presets:
-        with open(os.path.join(preset_dir, preset_name), encoding="utf-8") as f:
-            content = f.read()
+        try:
+            with open(os.path.join(preset_dir, preset_name), encoding="utf-8") as f:
+                content = f.read()
             avaliable_presets.append(toml.loads(content))
+        except (OSError, toml.TomlDecodeError) as e:
+            log.warning(f"Failed to load preset {preset_name}: {e}")
 
 
 def get_sample_prompts(config: dict) -> Tuple[Optional[str], str]:
@@ -293,11 +304,11 @@ async def create_toml_file(request: Request):
             if not validated:
                 return APIResponseFail(message=message)
 
-        # Anima / FLUX have no weighted tokenization (their strategy does not implement it)
-        if model_train_type in {"anima-lora", "flux-lora"} and config.get("weighted_captions"):
+        # Anima / FLUX / SD3 have no weighted tokenization (their strategy does not implement it)
+        if model_train_type in {"anima-lora", "flux-lora", "sd3-lora"} and config.get("weighted_captions"):
             return APIResponseFail(
                 message="当前训练类型不支持 weighted_captions：只有 SD / SDXL / Lumina 实现了加权分词，"
-                "Anima 与 FLUX 会静默忽略或直接报错。请关闭该选项后重试。"
+                "Anima / FLUX / SD3 会静默忽略或直接报错。请关闭该选项后重试。"
             )
 
         if "prompt_file" in config and config["prompt_file"].strip() != "":
@@ -594,9 +605,7 @@ async def get_runtime() -> APIResponse:
 
 @router.get("/schemas/hashes")
 async def list_schema_hashes() -> APIResponse:
-    if os.environ.get("MIKAZUKI_SCHEMA_HOT_RELOAD", "0") == "1":
-        log.info("Hot reloading schemas")
-        await load_schemas()
+    await load_schemas()
 
     return APIResponseSuccess(data={
         "schemas": [
@@ -611,6 +620,7 @@ async def list_schema_hashes() -> APIResponse:
 
 @router.get("/schemas/all")
 async def get_all_schemas() -> APIResponse:
+    await load_schemas()
     return APIResponseSuccess(data={
         "schemas": avaliable_schemas
     })
@@ -618,10 +628,7 @@ async def get_all_schemas() -> APIResponse:
 
 @router.get("/presets")
 async def get_presets() -> APIResponse:
-    if os.environ.get("MIKAZUKI_SCHEMA_HOT_RELOAD", "0") == "1":
-        log.info("Hot reloading presets")
-        await load_presets()
-
+    await load_presets()
     return APIResponseSuccess(data={
         "presets": avaliable_presets
     })

@@ -66,7 +66,8 @@ Schema.intersect([
 
     // caption 选项
     // FLUX 去除 max_token_length
-    Schema.object(UpdateSchema(SHARED_SCHEMAS.RAW.CAPTION_SETTINGS, {}, ["max_token_length"])).description("caption（Tag）选项"),
+    // weighted_captions 对 SD3 无效（strategy_sd3 未实现加权分词），因此隐藏该字段
+    Schema.object(UpdateSchema(SHARED_SCHEMAS.RAW.CAPTION_SETTINGS, {}, ["max_token_length", "weighted_captions"])).description("caption（Tag）选项"),
 
     // 噪声设置
     SHARED_SCHEMAS.NOISE_SETTINGS,
