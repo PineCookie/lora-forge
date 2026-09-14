@@ -54,6 +54,104 @@ trainer_mapping = {
     "anima-lora": "./scripts/sd-scripts/anima_train_network.py",
 }
 
+# These settings move into the generated dataset_config only when the user
+# assigns a non-zero timestep offset to a scanned subset. Keeping the normal
+# flat-config route untouched preserves backward compatibility for all other
+# training runs.
+#
+# Every key listed here must also exist in sd-scripts' dataset [general] schema
+# (library/config_util.py), otherwise config_util.sanitize_user_config rejects the
+# generated file with "extra keys not allowed". In particular `weighted_captions`
+# is NOT a dataset-config key -- it is a top-level CLI argument only -- so it must
+# stay out of this set (the GUI always sends it, because it is a boolean field).
+DATASET_CONFIG_KEYS = {
+    "train_batch_size", "resolution", "enable_bucket", "min_bucket_reso",
+    "max_bucket_reso", "bucket_reso_steps", "bucket_no_upscale",
+    "caption_extension", "shuffle_caption", "keep_tokens",
+    "keep_tokens_separator", "caption_dropout_rate",
+    "caption_dropout_every_n_epochs", "caption_tag_dropout_rate", "color_aug",
+    "flip_aug", "random_crop",
+}
+
+
+def _parse_resolution(value):
+    if not isinstance(value, str):
+        return value
+    values = [int(part.strip()) for part in value.split(",") if part.strip()]
+    return values[0] if len(values) == 1 else values
+
+
+def _scan_subsets(root: str, is_reg: bool = False):
+    subsets = []
+    for entry in sorted(os.listdir(root)):
+        entry_path = os.path.join(root, entry)
+        match = re.match(r"^(\d+)_.+", entry)
+        if not os.path.isdir(entry_path) or not match:
+            continue
+        subset = {"image_dir": entry_path.replace("\\", "/"), "num_repeats": int(match.group(1))}
+        if is_reg:
+            subset["is_reg"] = True
+        subsets.append((entry, subset))
+    return subsets
+
+
+def create_offset_dataset_config(config: dict, offsets: dict, dataset_path: str):
+    """Create a dataset_config for per-subset timestep offsets.
+
+    The simple UI convention is a root directory containing `repeats_name`
+    folders. Offsets are keyed by that folder name and only non-zero values are
+    written into custom_attributes.
+    """
+    parsed_offsets = {}
+    for name, value in offsets.items():
+        try:
+            offset = float(value)
+        except (TypeError, ValueError):
+            continue
+        if offset != 0.0:
+            parsed_offsets[name] = offset
+    if not parsed_offsets:
+        return False
+
+    train_root = config.get("train_data_dir", "")
+    subsets = _scan_subsets(train_root)
+    if not subsets:
+        raise ValueError("未检测到可用的训练子文件夹；请使用 `重复次数_名称` 格式。")
+
+    configured_names = {name for name, _subset in subsets}
+    unknown_names = set(parsed_offsets) - configured_names
+    if unknown_names:
+        raise ValueError("下列时间步偏移对应的子文件夹不存在：" + ", ".join(sorted(unknown_names)))
+
+    general = {}
+    for key in DATASET_CONFIG_KEYS:
+        if key not in config:
+            continue
+        value = config.pop(key)
+        if key == "train_batch_size":
+            general["batch_size"] = value
+        elif key == "resolution":
+            general[key] = _parse_resolution(value)
+        else:
+            general[key] = value
+
+    dataset_subsets = []
+    for name, subset in subsets:
+        if name in parsed_offsets:
+            subset["custom_attributes"] = {"timestep_sampling": {"offset": parsed_offsets[name]}}
+        dataset_subsets.append(subset)
+
+    reg_root = config.pop("reg_data_dir", "")
+    if reg_root and os.path.isdir(reg_root):
+        dataset_subsets.extend(subset for _name, subset in _scan_subsets(reg_root, is_reg=True))
+
+    config.pop("train_data_dir", None)
+    dataset_config = {"general": general, "datasets": [{"subsets": dataset_subsets}]}
+    with open(dataset_path, "w", encoding="utf-8") as f:
+        f.write(toml.dumps(dataset_config))
+    config["dataset_config"] = dataset_path.replace("\\", "/")
+    return True
+
 
 async def load_schemas():
     avaliable_schemas.clear()
@@ -131,6 +229,8 @@ async def create_toml_file(request: Request):
         log.info(f"Training config received: {config}")
         train_utils.fix_config_types(config)
 
+        subset_timestep_sampling_offsets = config.pop("subset_timestep_sampling_offsets", {})
+
         gpu_ids = config.pop("gpu_ids", None)
 
         suggest_cpu_threads = 8 if len(train_utils.get_total_images(config["train_data_dir"])) > 200 else 2
@@ -163,6 +263,14 @@ async def create_toml_file(request: Request):
 
             except ValueError as e:
                 log.error(f"Error while processing prompts: {e}")
+                return APIResponseFail(message=str(e))
+
+        if model_train_type in {"flux-lora", "anima-lora"}:
+            dataset_toml_file = os.path.join(os.getcwd(), f"config", "autosave", f"{timestamp}-dataset.toml")
+            try:
+                if create_offset_dataset_config(config, subset_timestep_sampling_offsets, dataset_toml_file):
+                    log.info(f"Wrote per-subset timestep offset dataset config to {dataset_toml_file}")
+            except ValueError as e:
                 return APIResponseFail(message=str(e))
 
         with open(toml_file, "w", encoding="utf-8") as f:

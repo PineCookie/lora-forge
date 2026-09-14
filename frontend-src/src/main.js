@@ -30,6 +30,7 @@ const state = {
   cards: [],
   current: {},
   currentRoute: null,
+  subsetTimestepSamplingOffsets: new Map(),
   collapsedSections: new Set(),
   fields: [],
   initialFieldValues: new Map(),
@@ -651,7 +652,11 @@ function renderTrainer(route) {
   const groups = withGpuSelector(withFrontendAnimaNetworkArgsFields(withFrontendOptimizerFields(flattenSchema(schema)), route.schema));
   state.fields = groups;
   state.currentRoute = route;
+  state.subsetTimestepSamplingOffsets = new Map();
   state.current = { ...defaultsFrom(groups), ...(route.defaults ?? {}) };
+  const timestepPreviewButton = ["flux-lora", "anima-lora"].includes(route.schema)
+    ? '<button type="button" id="preview-timesteps">预览时间步分布</button>'
+    : "";
 
   content().innerHTML = `
     <form id="trainer-form" class="trainer">
@@ -662,6 +667,7 @@ function renderTrainer(route) {
         <section class="action-group action-train">
           <h2>训练</h2>
           <button type="submit" class="primary">开始训练</button>
+          ${timestepPreviewButton}
           <button type="button" id="stop-training" class="danger">终止训练</button>
         </section>
         <section class="action-group action-config">
@@ -847,6 +853,7 @@ function visibilityRule(name) {
 function bindForm(groups) {
   const form = document.querySelector("#trainer-form");
   form.addEventListener("input", (event) => {
+    if (event.target.matches("[data-subset-timestep-offset]")) return;
     updateEditedField(event.target);
     applyDependentValues();
     updateVisibility();
@@ -854,6 +861,7 @@ function bindForm(groups) {
     updateDatasetStats();
   });
   form.addEventListener("change", (event) => {
+    if (event.target.matches("[data-subset-timestep-offset]")) return;
     updateEditedField(event.target);
     applyDependentValues();
     updateVisibility();
@@ -862,26 +870,12 @@ function bindForm(groups) {
   });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const config = readForm(groups);
-    console.log("Form submitted with config:", config);
-    try {
-      setStatus("正在启动训练...");
-      console.log("Sending request to /api/run");
-      const result = await api("/api/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
-      });
-      console.log("API response:", result);
-      setStatus(result.message || "训练任务已提交", "success");
-    } catch (error) {
-      console.error("Error:", error);
-      setStatus(error.message, "error");
-    }
+    await runTrainerConfig(groups, false);
   });
 
   document.querySelector("#reset-form").addEventListener("click", () => renderTrainer(routeFor(location.pathname)));
   document.querySelector("#stop-training").addEventListener("click", stopTraining);
+  document.querySelector("#preview-timesteps")?.addEventListener("click", () => runTrainerConfig(groups, true));
   document.querySelector("#export-config").addEventListener("click", () => downloadJson(readForm(groups)));
   document.querySelector("#export-toml").addEventListener("click", () => downloadToml(readForm(groups)));
   const copyBtn = document.querySelector("#copy-toml");
@@ -1044,18 +1038,29 @@ async function updateDatasetStats() {
 function renderDatasetStats(el, info, batchSize, gradAcc, epochs) {
   const { subdirs, total_images_with_repeats, total_images } = info;
   const effectiveBatch = batchSize * gradAcc;
-  const stepsPerEpoch = effectiveBatch > 0 ? Math.ceil(total_images_with_repeats / effectiveBatch) : 0;
-  const totalSteps = stepsPerEpoch * epochs;
+  // Lower bound: all images in one bucket — ceil(total / batch)
+  // Actual: sum over buckets of ceil(bucket_count / batch), which is ≥ lower bound
+  const stepsPerEpochMin = effectiveBatch > 0 ? Math.ceil(total_images_with_repeats / effectiveBatch) : 0;
+  const totalStepsMin = stepsPerEpochMin * epochs;
 
   let html = '<div class="dataset-stats-panel">';
   html += '<div class="dataset-stats-title">📊 步数预测</div>';
 
   if (subdirs && subdirs.length > 0) {
-    html += '<table class="dataset-stats-table"><thead><tr><th>子文件夹</th><th>重复次数</th><th>图片数</th><th>有效图片数</th></tr></thead><tbody>';
+    const supportsOffsets = ["flux-lora", "anima-lora"].includes(state.current.model_train_type);
+    html += `<table class="dataset-stats-table"><thead><tr><th>子文件夹</th><th>重复次数</th><th>图片数</th><th>有效图片数</th>${supportsOffsets ? "<th>时间步偏移</th>" : ""}</tr></thead><tbody>`;
     for (const s of subdirs) {
-      html += `<tr><td>${escapeHtml(s.concept || s.name)}</td><td>×${s.repeat}</td><td>${s.image_count}</td><td>${s.image_count * s.repeat}</td></tr>`;
+      const offset = state.subsetTimestepSamplingOffsets.get(s.name) ?? 0;
+      const offsetInput = supportsOffsets
+        ? `<td><input class="subset-timestep-offset" data-subset-timestep-offset="${escapeAttr(s.name)}" type="number" step="0.01" value="${escapeAttr(offset)}" title="负值：低噪声/细节；正值：高噪声/结构。为 0 时不改变原有行为。" /></td>`
+        : "";
+      html += `<tr><td>${escapeHtml(s.concept || s.name)}</td><td>×${s.repeat}</td><td>${s.image_count}</td><td>${s.image_count * s.repeat}</td>${offsetInput}</tr>`;
     }
     html += '</tbody></table>';
+    if (supportsOffsets) {
+      html += '<p class="dataset-stats-note">Timestep offset：负值偏向低噪声（细节），正值偏向高噪声（结构）。记录仅适用于 FLUX / Anima 训练；0 保持旧行为。</p>';
+      html += timestepOffsetRecommendation();
+    }
   } else {
     html += `<p class="dataset-stats-note">未检测到符合 <code>数字_概念名</code> 格式的子文件夹</p>`;
   }
@@ -1064,18 +1069,22 @@ function renderDatasetStats(el, info, batchSize, gradAcc, epochs) {
   html += `<div class="stat-row"><span>原始图片总数</span><span>${total_images}</span></div>`;
   html += `<div class="stat-row"><span>乘以重复后的有效图片数</span><span>${total_images_with_repeats}</span></div>`;
   html += `<div class="stat-row"><span>有效 batch size (batch × grad_accum)</span><span>${effectiveBatch}</span></div>`;
-  html += `<div class="stat-row"><span>每 epoch 步数</span><span>${stepsPerEpoch.toLocaleString()}</span></div>`;
-  html += `<div class="stat-row stat-row-highlight"><span>总训练步数</span><span>${totalSteps.toLocaleString()}</span></div>`;
+  html += `<div class="stat-row"><span>每 epoch 最少步数</span><span>${stepsPerEpochMin.toLocaleString()}</span></div>`;
+  html += `<div class="stat-row stat-row-highlight"><span>${epochs} epoch → 最少总步数</span><span>${totalStepsMin.toLocaleString()}</span></div>`;
   html += '</div>';
 
-  if (total_images_with_repeats > 0 && stepsPerEpoch > 0) {
+  if (total_images_with_repeats > 0 && stepsPerEpochMin > 0) {
+    html += '<div class="dataset-stats-note-bucket">';
+    html += '⚠ 以上为<b>下限估算</b>（假设所有图片落入同一分辨率桶）。ARB 分桶按宽高比将图片分入不同桶，每桶独立组 batch，碎片化会导致实际步数略高（通常 +1%~10%）。';
+    html += '</div>';
+
     html += '<div class="dataset-stats-suggestions">';
-    html += '<div class="dataset-stats-suggest-title">💡 参考</div>';
-    const for500 = Math.max(1, Math.round(500 / stepsPerEpoch));
-    const for1000 = Math.max(1, Math.round(1000 / stepsPerEpoch));
-    const for1500 = Math.max(1, Math.round(1500 / stepsPerEpoch));
-    const for2000 = Math.max(1, Math.round(2000 / stepsPerEpoch));
-    const for3000 = Math.max(1, Math.round(3000 / stepsPerEpoch));
+    html += '<div class="dataset-stats-suggest-title">💡 参考 epoch 数（基于下限估算）</div>';
+    const for500 = Math.max(1, Math.round(500 / stepsPerEpochMin));
+    const for1000 = Math.max(1, Math.round(1000 / stepsPerEpochMin));
+    const for1500 = Math.max(1, Math.round(1500 / stepsPerEpochMin));
+    const for2000 = Math.max(1, Math.round(2000 / stepsPerEpochMin));
+    const for3000 = Math.max(1, Math.round(3000 / stepsPerEpochMin));
     html += `<span>达到 ~500 步需要 ${for500} epoch； ~1,000 步需要 ${for1000} epoch； ~1,500 步需要 ${for1500} epoch； ~2,000 步需要 ${for2000} epoch； ~3,000 步需要 ${for3000} epoch</span>`;
     html += '</div>';
   }
@@ -1083,6 +1092,59 @@ function renderDatasetStats(el, info, batchSize, gradAcc, epochs) {
   html += '</div>';
   el.innerHTML = html;
 }
+
+function runConfigFromForm(groups, previewTimesteps) {
+  const config = readForm(groups);
+  const offsets = Object.fromEntries(
+    [...state.subsetTimestepSamplingOffsets].filter(([, value]) => Number(value) !== 0),
+  );
+  if (Object.keys(offsets).length) config.subset_timestep_sampling_offsets = offsets;
+
+  if (previewTimesteps) {
+    config.show_timesteps ||= "console";
+  } else {
+    // sd-scripts exits after rendering --show_timesteps. A real training run
+    // must never inherit preview-only fields from the form.
+    delete config.show_timesteps;
+    delete config.show_timesteps_offset;
+    delete config.show_timesteps_resolution;
+  }
+  return config;
+}
+
+async function runTrainerConfig(groups, previewTimesteps) {
+  const config = runConfigFromForm(groups, previewTimesteps);
+  console.log(previewTimesteps ? "Previewing timesteps with config:" : "Form submitted with config:", config);
+  try {
+    setStatus(previewTimesteps ? "正在生成时间步分布预览..." : "正在启动训练...");
+    const result = await api("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config),
+    });
+    setStatus(result.message || (previewTimesteps ? "时间步预览已提交" : "训练任务已提交"), "success");
+  } catch (error) {
+    console.error("Error:", error);
+    setStatus(error.message, "error");
+  }
+}
+
+function timestepOffsetRecommendation() {
+  const sampling = document.querySelector('[name="timestep_sampling"]')?.value ?? "sigmoid";
+  if (["sigma", "uniform"].includes(sampling)) {
+    return '<div class="timestep-offset-recommendation"><b>建议：</b>偏移在 <code>sigma</code> / <code>uniform</code> 模式下无效。如需使用该功能，请选择 <code>sigmoid</code> 作为起点。</div>';
+  }
+  if (["shift", "flux_shift"].includes(sampling)) {
+    return '<div class="timestep-offset-recommendation"><b>建议：</b><code>shift</code> / <code>flux_shift</code> 已经偏向高 timestep。从 <b>±0.25</b> 开始，谨慎使用正偏移；用 <code>show_timesteps=console</code> 先预览分布。</div>';
+  }
+  return '<div class="timestep-offset-recommendation"><b>推荐起点：</b><code>timestep_sampling=sigmoid</code>、<code>sigmoid_scale=1.0</code>。先保持全部为 0；细节/近景子集可试 <b>-0.25</b>，全身/架构子集可试 <b>+0.25</b>。只在对比预览后再扩大到 <b>±0.5</b>。</div>';
+}
+
+document.addEventListener("input", (event) => {
+  const input = event.target.closest?.("[data-subset-timestep-offset]");
+  if (!input) return;
+  state.subsetTimestepSamplingOffsets.set(input.dataset.subsetTimestepOffset, input.value);
+}, true);
 
 function updateVisibility() {
   for (const field of document.querySelectorAll("[data-visible-field]")) {
