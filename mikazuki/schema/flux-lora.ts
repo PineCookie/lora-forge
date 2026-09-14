@@ -79,7 +79,9 @@ Schema.intersect([
 
     // caption 选项
     // FLUX 去除 max_token_length
-    Schema.object(UpdateSchema(SHARED_SCHEMAS.RAW.CAPTION_SETTINGS, {}, ["max_token_length"])).description("caption（Tag）选项"),
+    // caption 选项。weighted_captions 在 FLUX 训练中不被支持（strategy_flux 未实现加权分词），
+    // 开启后要么静默忽略、要么在未启用文本编码器缓存时直接报 NotImplementedError，因此隐藏该字段。
+    Schema.object(UpdateSchema(SHARED_SCHEMAS.RAW.CAPTION_SETTINGS, {}, ["max_token_length", "weighted_captions"])).description("caption（Tag）选项"),
 
     // 噪声设置
     SHARED_SCHEMAS.NOISE_SETTINGS,

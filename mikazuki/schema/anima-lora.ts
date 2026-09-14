@@ -2,8 +2,8 @@ Schema.intersect([
     Schema.object({
         model_train_type: Schema.string().default("anima-lora").disabled().description("训练种类"),
         pretrained_model_name_or_path: Schema.string().role('filepicker', { type: "model-file" }).default("./sd-models/anima.safetensors").description("Anima DiT 模型路径"),
-        qwen3: Schema.string().role('filepicker', { type: "model-file" }).description("Qwen3-0.6B 模型路径，可填写 safetensors 文件或模型目录"),
-        vae: Schema.string().role('filepicker', { type: "model-file" }).description("Qwen-Image VAE 模型路径"),
+        qwen3: Schema.string().role('filepicker', { type: "model-file" }).description("必填。Qwen3-0.6B 模型路径，可填写 safetensors 文件或模型目录"),
+        vae: Schema.string().role('filepicker', { type: "model-file" }).description("必填。Qwen-Image VAE 模型路径"),
         llm_adapter_path: Schema.string().role('filepicker', { type: "model-file" }).description("可选：单独的 LLM adapter 权重路径。不填写时从 DiT 中读取"),
         t5_tokenizer_path: Schema.string().role('filepicker', { type: "folder" }).description("可选：T5 tokenizer 目录。不填写时使用 sd-scripts 内置 configs/t5_old"),
         resume: Schema.string().role('filepicker', { type: "folder" }).description("从某个 `save_state` 保存的中断状态继续训练，填写文件路径"),
@@ -123,7 +123,9 @@ Schema.intersect([
     ]),
 
     // caption 选项
-    Schema.object(UpdateSchema(SHARED_SCHEMAS.RAW.CAPTION_SETTINGS, {}, ["max_token_length"])).description("caption（Tag）选项"),
+    // caption 选项。weighted_captions 在 Anima 训练中不被支持（strategy_anima 未实现加权分词，
+    // 开启后要么静默忽略、要么在未启用文本编码器缓存时直接报 NotImplementedError），因此隐藏该字段。
+    Schema.object(UpdateSchema(SHARED_SCHEMAS.RAW.CAPTION_SETTINGS, {}, ["max_token_length", "weighted_captions"])).description("caption（Tag）选项"),
 
     // 噪声设置
     SHARED_SCHEMAS.NOISE_SETTINGS,
@@ -140,37 +142,37 @@ Schema.intersect([
     // 速度优化选项
     Schema.object(
         UpdateSchema(SHARED_SCHEMAS.RAW.PRECISION_CACHE_BATCH, {
-            mixed_precision: Schema.union(["no", "fp16", "bf16"]).default("bf16").description("训练混合精度，RTX30系列以后也可以指定 `bf16`"),
-            full_precision: Schema.union(["none", "full_fp16", "full_bf16"]).default("full_bf16").description("完全精度模式。full_fp16 与 full_bf16 不能同时启用"),
-            xformers: Schema.boolean().default(false).description("启用 xformers。Anima 使用 xformers 时需要同时启用 split_attn"),
-            sdpa: Schema.boolean().default(true).description("启用 sdpa"),
-            cache_text_encoder_outputs: Schema.boolean().default(true).description("缓存文本编码器的输出，减少显存使用。使用时需要关闭 shuffle_caption，并开启 network_train_unet_only"),
+            mixed_precision: Schema.union(["no", "fp16", "bf16"]).default("bf16").description("训练混合精度，RTX30系列以后也可以指定 `bf16`。选择完全精度模式时会自动调整"),
+            full_precision: Schema.union(["none", "full_fp16", "full_bf16"]).default("full_bf16").description("完全精度模式。选择 full_fp16/full_bf16 会自动把混合精度设为 fp16/bf16（sd-scripts 强制要求一致）"),
+            cache_text_encoder_outputs: Schema.boolean().default(true).description("缓存文本编码器的输出，减少显存使用。使用时需要关闭 shuffle_caption，并会自动开启 network_train_unet_only（启用缓存后无法训练文本编码器）"),
             cache_text_encoder_outputs_to_disk: Schema.boolean().default(true).description("缓存文本编码器的输出到磁盘"),
             cache_latents: Schema.boolean().default(true).description("缓存图像 latent，缓存 VAE 输出以减少 VRAM 使用"),
             cache_latents_to_disk: Schema.boolean().default(true).description("缓存图像 latent 到磁盘"),
-            attn_mode: Schema.union(["torch", "xformers", "flash", "sdpa"]).default("torch").description("Attention 实现，覆盖 xformers/sdpa 选项。Torch = sdpa"),
-            split_attn: Schema.boolean().default(false).description("拆分 attention 计算以降低显存占用。仅在使用 xformers 时需要。"),
-            blocks_to_swap: Schema.number().min(0).step(1).description("训练时交换到 CPU 的 block 数量。不能与 cpu/unsloth offload checkpointing 同时使用"),
-            cpu_offload_checkpointing: Schema.boolean().default(false).description("将梯度检查点 offload 到 CPU，降低显存但会变慢"),
-            unsloth_offload_checkpointing: Schema.boolean().default(false).description("使用异步 CPU RAM offload 激活值。不能与 cpu_offload_checkpointing 或 blocks_to_swap 同时使用"),
-            vae_chunk_size: Schema.number().min(2).step(2).description("VAE 编解码空间分块大小，必须为偶数。不填写则不分块"),
-            vae_disable_cache: Schema.boolean().default(false).description("禁用 VAE 内部缓存以降低显存"),
-            qwen_image_vae_2d: Schema.boolean().default(false).description("使用仅图像 2D Qwen-Image VAE（将 Conv3d 权重转为 Conv2d）。官方 Anima VAE 权重可用此选项。⚠ 需 sd-scripts v0.11.1+"),
+            // Anima 不使用 --xformers / --sdpa：anima_train_network.py 会用 --attn_mode 覆盖它们，
+            // 因此这里只暴露 attn_mode，避免出现“勾了却没生效”的开关。
+            attn_mode: Schema.union(["torch", "xformers", "flash"]).default("torch").description("Attention 实现。torch = PyTorch SDPA（默认）；xformers 需 xformers，flash 需 flash-attn"),
+            split_attn: Schema.boolean().default(false).description("逐样本拆分 attention 计算以降低显存。Anima 无 attention mask，xformers 并非必须；不能与 compile_fullgraph 同时启用"),
+            blocks_to_swap: Schema.number().min(0).step(1).description("训练时交换到 CPU 的 block 数量。不能与 cpu/unsloth offload checkpointing 同时使用（勾选任一 offload 会自动清空此项）"),
+            cpu_offload_checkpointing: Schema.boolean().default(false).description("将梯度检查点 offload 到 CPU，降低显存但会变慢。与 blocks_to_swap、unsloth offload 互斥"),
+            unsloth_offload_checkpointing: Schema.boolean().default(false).description("使用异步 CPU RAM offload 激活值。与 cpu_offload_checkpointing、blocks_to_swap 互斥"),
+            vae_chunk_size: Schema.number().min(2).step(2).description("VAE 编解码空间分块大小，必须为偶数。不填写则不分块。启用 qwen_image_vae_2d 时对峰值显存影响很小"),
+            vae_disable_cache: Schema.boolean().default(false).description("禁用 VAE 内部缓存以降低显存。qwen_image_vae_2d 无时间维缓存，该选项无效"),
+            qwen_image_vae_2d: Schema.boolean().default(false).description("使用仅图像 2D Qwen-Image VAE（将 Conv3d 权重转为 Conv2d），encode/decode 约 2 倍速、峰值显存约 1/3，推荐配合 cache_latents 使用。⚠ 需 sd-scripts v0.11.1+"),
             text_encoder_batch_size: Schema.number().min(1).description("缓存文本编码器输出时的批量大小，不填写则使用数据集 batch size"),
-        }, ["fp8_base", "fp8_base_unet", "no_half_vae", "lowram", "full_fp16", "full_bf16"])
+        }, ["fp8_base", "fp8_base_unet", "no_half_vae", "lowram", "full_fp16", "full_bf16", "xformers", "sdpa"])
     ).description("速度优化选项"),
 
     // torch.compile 优化（Anima per-block compile，v0.11.1+）
     Schema.object({
-        compile: Schema.boolean().default(false).description("启用 per-block torch.compile，显著加速 Anima 训练（需 Triton）。与旧版 --torch_compile 互斥"),
+        compile: Schema.boolean().default(false).description("启用 per-block torch.compile，显著加速 Anima 训练（需 Triton）。与旧版 --torch_compile 互斥；下方的 backend/mode/dynamic/fullgraph/cache_size_limit 仅在开启时生效"),
         compile_backend: Schema.union(["inductor", "eager", "aot_eager"]).default("inductor").description("torch.compile 后端"),
         compile_mode: Schema.union(["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]).default("default").description("编译模式。max-autotune 最快但首次编译慢"),
         compile_dynamic: Schema.union(["auto", "true", "false"]).default("auto").description("动态形状模式。Windows 上选 true 需要 VS 2022 C++ 编译器"),
-        compile_fullgraph: Schema.boolean().default(false).description("全图编译模式。不能与 split_attn 同时使用"),
+        compile_fullgraph: Schema.boolean().default(false).description("全图编译模式。不能与 split_attn 同时使用（勾选后会自动取消 split_attn）"),
         compile_cache_size_limit: Schema.number().min(1).default(32).description("torch._dynamo 缓存大小限制，推荐 32"),
-        cuda_allow_tf32: Schema.boolean().default(false).description("允许 TF32 精度（Ampere+ GPU），可提升性能"),
-        cuda_cudnn_benchmark: Schema.boolean().default(false).description("启用 cuDNN benchmark 模式，可能提升性能"),
-    }).description("torch.compile 优化（⚠ 需 sd-scripts v0.11.1+）"),
+        cuda_allow_tf32: Schema.boolean().default(false).description("允许 TF32 精度（Ampere+ GPU），可提升性能。与 compile 无关，可单独启用"),
+        cuda_cudnn_benchmark: Schema.boolean().default(false).description("启用 cuDNN benchmark 模式，可能提升性能。与 compile 无关，可单独启用"),
+    }).description("torch.compile / CUDA 性能优化（⚠ 需 sd-scripts v0.11.1+）"),
 
     // 分布式训练
     SHARED_SCHEMAS.DISTRIBUTED_TRAINING
