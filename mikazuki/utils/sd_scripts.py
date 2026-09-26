@@ -57,10 +57,25 @@ CONFIG_KEY_FEATURES = {
 }
 
 _SUPPORT_CACHE: Dict[tuple, bool] = {}
+_HEAD_CACHE: Dict[tuple, Optional[str]] = {}
 
 
 def sd_scripts_dir(root: Optional[Path] = None) -> Path:
     return Path(root) if root is not None else base_dir_path().joinpath(*SD_SCRIPTS_SUBPATH)
+
+
+def _checkout_stamp(directory: Path) -> float:
+    """Cheap change marker for a checkout, so the HEAD lookup can be cached.
+
+    ``.git/HEAD`` is rewritten on every checkout/branch switch; fall back to the ``.git``
+    entry (or the directory itself) for worktrees where ``.git`` is a file.
+    """
+    for candidate in (directory / ".git" / "HEAD", directory / ".git", directory):
+        try:
+            return candidate.stat().st_mtime
+        except OSError:
+            continue
+    return 0.0
 
 
 def requested_features(config: Mapping, has_offsets: bool = False) -> Set[str]:
@@ -72,10 +87,15 @@ def requested_features(config: Mapping, has_offsets: bool = False) -> Set[str]:
 
 
 def head_commit(root: Optional[Path] = None) -> Optional[str]:
-    """HEAD of the checkout, or None when git cannot tell."""
+    """HEAD of the checkout, or None when git cannot tell. Cached until the checkout changes."""
+    directory = sd_scripts_dir(root)
+    cache_key = (str(directory), _checkout_stamp(directory))
+    if cache_key in _HEAD_CACHE:
+        return _HEAD_CACHE[cache_key]
+
     try:
         result = subprocess.run(
-            ["git", "-C", str(sd_scripts_dir(root)), "rev-parse", "HEAD"],
+            ["git", "-C", str(directory), "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -84,8 +104,11 @@ def head_commit(root: Optional[Path] = None) -> Optional[str]:
         log.debug(f"cannot read sd-scripts HEAD: {e}")
         return None
     if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
+        head = None
+    else:
+        head = result.stdout.strip() or None
+    _HEAD_CACHE[cache_key] = head
+    return head
 
 
 def _introduced_before(feature: Feature, root: Optional[Path], head: Optional[str]) -> Optional[bool]:

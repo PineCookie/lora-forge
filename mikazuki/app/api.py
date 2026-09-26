@@ -284,13 +284,22 @@ async def create_toml_file(request: Request):
 
         gpu_ids = config.pop("gpu_ids", None)
 
-        suggest_cpu_threads = 8 if len(train_utils.get_total_images(config["train_data_dir"])) > 200 else 2
         model_train_type = config.pop("model_train_type", "sd-lora")
-        trainer_file = trainer_mapping[model_train_type]
+        trainer_file = trainer_mapping.get(model_train_type)
+        if trainer_file is None:
+            return APIResponseFail(message=f"未知的训练类型：{model_train_type}")
 
         if model_train_type != "sdxl-finetune":
             if not train_utils.validate_data_dir(config["train_data_dir"]):
                 return APIResponseFail(message="训练数据集路径不存在或没有图片，请检查目录。")
+
+        # Only now is the dataset known to be valid; the image count is only used to pick a
+        # thread suggestion, so don't walk the tree before the validation above.
+        train_data_dir = config.get("train_data_dir", "")
+        if train_data_dir and os.path.isdir(train_data_dir) and len(train_utils.get_total_images(train_data_dir)) > 200:
+            suggest_cpu_threads = 8
+        else:
+            suggest_cpu_threads = 2
 
         validated, message = train_utils.validate_model(config["pretrained_model_name_or_path"], model_train_type)
         if not validated:
@@ -366,12 +375,16 @@ async def run_script(request: Request, background_tasks: BackgroundTasks):
     del j["script_name"]
     result = []
     for k, v in j.items():
+        if isinstance(v, bool):
+            # A false flag means "not set"; only emit the switch when it is true.
+            if v:
+                result.append(f"--{k}")
+            continue
         result.append(f"--{k}")
-        if not isinstance(v, bool):
-            value = str(v)
-            if " " in value:
-                value = f'"{v}"'
-            result.append(value)
+        value = str(v)
+        if " " in value:
+            value = f'"{value}"'
+        result.append(value)
     script_args = " ".join(result)
     script_path = Path(os.getcwd()) / "scripts" / script_name
     cmd = f"{launch_utils.python_bin} {script_path} {script_args}"
@@ -434,12 +447,12 @@ async def get_files(pick_type) -> APIResponse:
         "model-file": {
             "type": "file",
             "path": "./sd-models",
-            "filter": "(.safetensors|.ckpt|.pt)"
+            "filter": r"\.(safetensors|ckpt|pt)$"
         },
         "model-saved-file": {
             "type": "file",
             "path": "./output",
-            "filter": "(.safetensors|.ckpt|.pt)"
+            "filter": r"\.(safetensors|ckpt|pt)$"
         },
         "train-dir": {
             "type": "folder",
@@ -452,6 +465,8 @@ async def get_files(pick_type) -> APIResponse:
 
     def list_path_or_files(preset_info):
         path = Path(preset_info["path"])
+        if not path.is_dir():
+            return []
         file_type = preset_info["type"]
         regex_filter = preset_info["filter"]
         result_list = []
@@ -484,7 +499,8 @@ async def get_files(pick_type) -> APIResponse:
     if pick_type not in pick_preset:
         return APIResponseFail(message="Invalid request")
 
-    dirs = list_path_or_files(pick_preset[pick_type])
+    # The recursive model scan can be heavy on large model folders; keep it off the event loop.
+    dirs = await asyncio.to_thread(list_path_or_files, pick_preset[pick_type])
     return APIResponseSuccess(data={
         "files": dirs
     })

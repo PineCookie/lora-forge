@@ -75,11 +75,23 @@ class Task:
 
 
 class TaskManager:
+    # Keep a bounded history of finished/terminated tasks so a long session does not grow forever.
+    MAX_RETAINED_TASKS = 20
+
     def __init__(self, max_concurrent=1) -> None:
         self.max_concurrent = max_concurrent
         self.tasks: Dict[str, Task] = {}
 
+    def _prune(self):
+        done = [
+            task_id for task_id, task in self.tasks.items()
+            if task.status in (TaskStatus.FINISHED, TaskStatus.TERMINATED)
+        ]
+        for task_id in done[: -self.MAX_RETAINED_TASKS]:
+            self.tasks.pop(task_id, None)
+
     def create_task(self, command: List[str], environ):
+        self._prune()
         running_tasks = [t for _, t in self.tasks.items() if t.status == TaskStatus.RUNNING]
         if len(running_tasks) >= self.max_concurrent:
             log.error(
