@@ -1,7 +1,7 @@
 # Anima LoRA 训练说明（lora-scripts / LoRA-Forge）
 
 这份文档记录 **本 GUI 与 sd-scripts 的 Anima 训练对接**中容易踩的点：哪些选项真正生效、依赖什么版本、什么情况下会被静默忽略。
-底层参数语义以 sd-scripts 自带的 [`docs/anima_train_network.md`](../scripts/sd-scripts/docs/anima_train_network.md) 与 [`docs/anima_torch_compile.md`](../scripts/sd-scripts/docs/anima_torch_compile.md) 为准。
+底层参数语义以 sd-scripts 上游的 [`docs/anima_train_network.md`](https://github.com/kohya-ss/sd-scripts/blob/main/docs/anima_train_network.md) 与 [`docs/anima_torch_compile.md`](https://github.com/kohya-ss/sd-scripts/blob/main/docs/anima_torch_compile.md) 为准。
 
 ## 1. sd-scripts 版本要求
 
@@ -15,6 +15,7 @@ GUI 把选项写成配置键交给 sd-scripts，而 sd-scripts **对未知配置
 | `--show_timesteps` / `--show_timesteps_resolution`（时间步预览） | v0.11.1 | |
 | 子文件夹时间步偏移、`--show_timesteps_offset` | main（> v0.11.1） | 不在任何 tag 里 |
 
+- 当前 GUI 已对照验证的版本：**v0.12.0**（`690ea7f`）。v0.12.0 起上游把 `transformers` 升到 5.17、`diffusers` 0.40、`huggingface-hub` 1.32，本仓库的 `pyproject.toml` 已同步；升级 sd-scripts 时请一并 `uv sync`，不要只更新其中一边。
 - 更新 sd-scripts：`.\update_sd_scripts.ps1`（默认跟 `main`；只支持分支，不支持 tag）。
 - GUI 的「关于」页会显示 **sd-scripts 兼容性**：`兼容（已测试版本）` / `兼容` / `过旧：缺少 …`。
 - 提交训练时，如果所选功能超出已安装版本，GUI 会**直接报错**而不是静默跑一个无效配置。

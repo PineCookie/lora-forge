@@ -41,7 +41,7 @@ FEATURES: Dict[str, Feature] = {
 }
 
 # last checkout this GUI was verified against (main)
-SD_SCRIPTS_TESTED_REF = "4e624302e0088e39933b31cbc71f24212e900f5f"
+SD_SCRIPTS_TESTED_REF = "690ea7f96c23182352ec63def76d431c6120bd2f"
 SD_SCRIPTS_SUBPATH = ("scripts", "sd-scripts")
 
 # config key -> feature the key needs. Keys that are always sent with their default value
