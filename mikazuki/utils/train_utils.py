@@ -24,6 +24,11 @@ class ModelType(Enum):
     LoRA = 10
 
 
+MODEL_FILE_EXTENSIONS = {
+    "pt", "pth", "ckpt", "safetensors", "bin", "gguf", "onnx", "sft",
+}
+
+
 MODEL_SIGNATURE = [
     {
         "type": ModelType.ANIMA,
@@ -205,13 +210,17 @@ def validate_model(model_name: str, training_type: str = "sd-lora"):
 
 
 def is_huggingface_repo_id(name) -> bool:
-    """True for values that look like a HuggingFace repo id, e.g. "Qwen/Qwen3-0.6B"."""
+    """True for values that look like a HuggingFace repo id, e.g. "Qwen/Qwen3-0.6B".
+
+    A value with one slash is ambiguous (it could be a relative path), so anything that ends
+    in a known model-file extension is treated as a local path and rejected here.
+    """
     if not isinstance(name, str) or not name:
         return False
     return (
         name.count("/") == 1
         and name[0] not in [".", "/"]
-        and name.split(".")[-1] not in ["pt", "pth", "ckpt", "safetensors"]
+        and name.split(".")[-1].lower() not in MODEL_FILE_EXTENSIONS
     )
 
 

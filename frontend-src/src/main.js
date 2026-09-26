@@ -1183,7 +1183,7 @@ async function runTrainerConfig(groups, previewTimesteps) {
 
 function redactConfigForLog(config) {
   const copy = { ...config };
-  for (const key of ["wandb_api_key", "huggingface_token"]) {
+  for (const key of ["wandb_api_key", "huggingface_token", "hf_token"]) {
     if (copy[key]) copy[key] = "<redacted>";
   }
   return copy;

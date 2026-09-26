@@ -12,7 +12,6 @@ from typing import Tuple, Optional
 
 import toml
 from fastapi import APIRouter, BackgroundTasks, Request
-from starlette.requests import Request
 
 import mikazuki.process as process
 from mikazuki import launch_utils
@@ -84,6 +83,23 @@ def _parse_resolution(value):
     return values[0] if len(values) == 1 else values
 
 
+def parse_repeat_folder(name: str):
+    """Split a `repeats_name` folder into `(num_repeats, class_tokens)`.
+
+    Mirrors sd-scripts' `extract_dreambooth_params()` so the dataset stats table and the
+    generated offset dataset config agree on which folders count. Returns None for folders
+    without a valid positive leading repeat count.
+    """
+    tokens = name.split("_")
+    try:
+        num_repeats = int(tokens[0])
+    except ValueError:
+        return None
+    if num_repeats < 1:
+        return None
+    return num_repeats, "_".join(tokens[1:])
+
+
 def _scan_subsets(root: str, is_reg: bool = False):
     """Scan `repeats_name` subdirectories into subset configs, mirroring sd-scripts'
     generate_dreambooth_subsets_config_by_subdirs() (same directory names, same
@@ -95,20 +111,16 @@ def _scan_subsets(root: str, is_reg: bool = False):
         if not os.path.isdir(entry_path):
             continue
 
-        # identical to sd-scripts' extract_dreambooth_params()
-        tokens = entry.split("_")
-        try:
-            num_repeats = int(tokens[0])
-        except ValueError:
+        parsed = parse_repeat_folder(entry)
+        if parsed is None:
             log.warning(f"忽略不符合 `重复次数_名称` 格式的子文件夹：{entry}")
             continue
-        if num_repeats < 1:
-            continue
+        num_repeats, class_tokens = parsed
 
         subset = {
             "image_dir": entry_path.replace("\\", "/"),
             "num_repeats": num_repeats,
-            "class_tokens": "_".join(tokens[1:]),
+            "class_tokens": class_tokens,
         }
         if is_reg:
             subset["is_reg"] = True
@@ -183,12 +195,13 @@ async def load_schemas():
     avaliable_schemas.clear()
 
     schema_dir = os.path.join(os.getcwd(), "mikazuki", "schema")
-    schemas = os.listdir(schema_dir)
 
     def lambda_hash(x):
         return hashlib.md5(x.encode()).hexdigest()
 
-    for schema_name in schemas:
+    for schema_name in sorted(os.listdir(schema_dir)):
+        if not schema_name.endswith(".ts"):
+            continue
         try:
             with open(os.path.join(schema_dir, schema_name), encoding="utf-8") as f:
                 content = f.read()
@@ -196,7 +209,7 @@ async def load_schemas():
             log.warning(f"Failed to read schema {schema_name}: {e}")
             continue
         avaliable_schemas.append({
-            "name": schema_name.rstrip(".ts"),
+            "name": schema_name.removesuffix(".ts"),
             "schema": content,
             "hash": lambda_hash(content)
         })
@@ -207,9 +220,13 @@ async def load_presets():
     avaliable_presets.clear()
 
     preset_dir = os.path.join(os.getcwd(), "config", "presets")
-    presets = os.listdir(preset_dir)
+    if not os.path.isdir(preset_dir):
+        return
+    presets = sorted(os.listdir(preset_dir))
 
     for preset_name in presets:
+        if not preset_name.endswith(".toml"):
+            continue
         try:
             with open(os.path.join(preset_dir, preset_name), encoding="utf-8") as f:
                 content = f.read()
@@ -400,7 +417,7 @@ async def pick_file(picker_type: str):
         file_types = [("checkpoints", "*.safetensors;*.ckpt;*.pt"), ("all files", "*.*")]
         coro = asyncio.to_thread(open_file_selector, "", "Select file", file_types)
     else:
-        exit(1)
+        return APIResponseFail(message=f"不支持的 picker_type: {picker_type}")
 
     result = await coro
     if result == "":
@@ -477,7 +494,7 @@ async def get_files(pick_type) -> APIResponse:
 async def get_dataset_info(train_data_dir: str = "") -> APIResponse:
     """Return image counts and repeat info for a dataset directory.
 
-    Scans subdirectories matching the pattern ^\\d+_.+ (repeat_count_name),
+    Scans subdirectories matching the `repeats_name` convention (see parse_repeat_folder),
     counts images in each, and returns totals.
     """
     if not train_data_dir or not os.path.isdir(train_data_dir):
@@ -498,12 +515,11 @@ async def get_dataset_info(train_data_dir: str = "") -> APIResponse:
         if not os.path.isdir(entry_path):
             continue
 
-        match = re.match(r"^(\d+)_(.+)$", entry)
-        if not match:
+        match = parse_repeat_folder(entry)
+        if match is None:
             continue
 
-        repeat = int(match.group(1))
-        concept_name = match.group(2)
+        repeat, concept_name = match
 
         image_count = 0
         for root, _dirs, files in os.walk(entry_path):
@@ -565,12 +581,17 @@ async def get_runtime() -> APIResponse:
     except Exception:
         versions["sd_scripts_status"] = "unknown"
 
-    # PyTorch version
+    # PyTorch / CUDA version
     try:
         import torch
         versions["pytorch"] = torch.__version__
+        if torch.cuda.is_available():
+            versions["cuda"] = torch.version.cuda or "unknown"
+        else:
+            versions["cuda"] = "not available"
     except Exception:
         versions["pytorch"] = "unknown"
+        versions["cuda"] = "unknown"
 
     # Triton version
     try:
@@ -578,16 +599,6 @@ async def get_runtime() -> APIResponse:
         versions["triton"] = getattr(triton, "__version__", "installed")
     except Exception:
         versions["triton"] = "not installed"
-
-    # CUDA version
-    try:
-        import torch
-        if torch.cuda.is_available():
-            versions["cuda"] = torch.version.cuda or "unknown"
-        else:
-            versions["cuda"] = "not available"
-    except Exception:
-        versions["cuda"] = "unknown"
 
     return APIResponseSuccess(data={
         "services": {
