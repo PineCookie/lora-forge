@@ -5,15 +5,12 @@ import re
 from collections import OrderedDict
 from glob import glob
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
-import numpy as np
-import pandas as pd
 from PIL import Image
 from PIL import UnidentifiedImageError
-from huggingface_hub import hf_hub_download
 
-from mikazuki.tagger import dbimutils, format
+from mikazuki.tagger import format
 from mikazuki.tagger.interrogators.base import Interrogator
 from mikazuki.tagger.interrogators.wd14 import WaifuDiffusionInterrogator
 from mikazuki.tagger.interrogators.cl import CLTaggerInterrogator

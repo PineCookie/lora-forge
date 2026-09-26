@@ -10,7 +10,7 @@ def check_torch_gpu():
         import torch
         log.info(f'Torch {torch.__version__}')
         if not torch.cuda.is_available():
-            log.error("Torch is not able to use GPU, please check your torch installation.\n Use --skip-prepare-environment to disable this check")
+            log.error("Torch is not able to use GPU, please check your torch installation.")
             log.error("！！！Torch 无法使用 GPU，您无法正常开始训练！！！\n您的显卡可能并不支持，或是 torch 安装有误。请检查您的 torch 安装。")
             if "cpu" in torch.__version__:
                 log.error("You are using torch CPU, please install torch GPU version by run install script again.")

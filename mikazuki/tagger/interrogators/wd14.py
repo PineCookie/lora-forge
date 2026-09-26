@@ -1,19 +1,14 @@
 # from https://github.com/toriato/stable-diffusion-webui-wd14-tagger
-import json
 import os
-import re
-from collections import OrderedDict
-from glob import glob
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
 from PIL import Image
-from PIL import UnidentifiedImageError
 from huggingface_hub import hf_hub_download
 from mikazuki.tagger.interrogators.base import Interrogator
-from mikazuki.tagger import dbimutils, format
+from mikazuki.tagger import dbimutils
 
 
 class WaifuDiffusionInterrogator(Interrogator):
@@ -40,18 +35,6 @@ class WaifuDiffusionInterrogator(Interrogator):
 
     def load(self) -> None:
         model_path, tags_path = self.download()
-
-        # only one of these packages should be installed at a time in any one environment
-        # https://onnxruntime.ai/docs/get-started/with-python.html#install-onnx-runtime
-        # TODO: remove old package when the environment changes?
-        # from mikazuki.launch_utils import is_installed, run_pip
-        # if not is_installed('onnxruntime'):
-        #     package = os.environ.get(
-        #         'ONNXRUNTIME_PACKAGE',
-        #         'onnxruntime-gpu'
-        #     )
-
-        #     run_pip(f'install {package}', 'onnxruntime')
 
         # Load torch to load cuda libs built in torch for onnxruntime, do not delete this.
         import torch

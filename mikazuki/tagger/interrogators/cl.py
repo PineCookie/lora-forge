@@ -1,18 +1,12 @@
 import json
 import os
-import re
-from collections import OrderedDict
-from glob import glob
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Tuple
 
 import numpy as np
-import pandas as pd
 from PIL import Image
-from PIL import UnidentifiedImageError
 from huggingface_hub import hf_hub_download
 from dataclasses import dataclass
-from mikazuki.tagger import dbimutils, format
 from mikazuki.tagger.interrogators.base import Interrogator
 
 

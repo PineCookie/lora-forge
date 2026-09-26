@@ -1,21 +1,16 @@
-import subprocess
-import sys
 import os
+import subprocess
 import threading
 import uuid
 from enum import Enum
+from subprocess import CompletedProcess, TimeoutExpired
 from typing import Dict, List
-from subprocess import Popen, PIPE, TimeoutExpired, CalledProcessError, CompletedProcess
+
 import psutil
 
 from mikazuki.log import log
 
-try:
-    import msvcrt
-    import _winapi
-    _mswindows = True
-except ModuleNotFoundError:
-    _mswindows = False
+_mswindows = os.name == "nt"
 
 
 def kill_proc_tree(pid, including_parent=True):
@@ -82,7 +77,7 @@ class Task:
 class TaskManager:
     def __init__(self, max_concurrent=1) -> None:
         self.max_concurrent = max_concurrent
-        self.tasks: Dict[Task] = {}
+        self.tasks: Dict[str, Task] = {}
 
     def create_task(self, command: List[str], environ):
         running_tasks = [t for _, t in self.tasks.items() if t.status == TaskStatus.RUNNING]

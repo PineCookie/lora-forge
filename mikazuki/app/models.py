@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Union, Dict, Any
+from typing import Optional, Dict
 
 
 class TaggerInterrogateRequest(BaseModel):
