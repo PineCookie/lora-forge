@@ -1,5 +1,6 @@
 .vscode
 .idea
+.kilo
 
 venv
 .venv
@@ -19,7 +20,7 @@ git
 wd14_tagger_model
 
 # kohya-ss/sd-scripts clone created by the launcher (see README); not part of this repo.
-# Leading slash keeps the tracked mikazuki/scripts and frontend-src/scripts unaffected.
+# The leading slash keeps nested scripts directories unaffected.
 /scripts/
 
 train/*
